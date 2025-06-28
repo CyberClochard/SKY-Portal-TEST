@@ -34,6 +34,11 @@ const DataTable: React.FC = () => {
       setLoading(true)
       setError(null)
       
+      // Check if Supabase is properly configured
+      if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+        throw new Error('Configuration Supabase manquante. Vérifiez vos variables d\'environnement.')
+      }
+      
       let query = supabase
         .from('MASTER')
         .select('*')
@@ -71,7 +76,8 @@ const DataTable: React.FC = () => {
       }
       
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur lors du chargement des données')
+      const errorMessage = err instanceof Error ? err.message : 'Erreur lors du chargement des données'
+      setError(errorMessage)
       console.error('Erreur Supabase:', err)
     } finally {
       setLoading(false)
@@ -376,7 +382,8 @@ const DataTable: React.FC = () => {
     return (
       <div className="bg-red-900/20 border border-red-700 rounded-lg p-4">
         <div className="flex items-center space-x-2 text-red-400">
-          <span>❌ Erreur: {error}</span>
+          <AlertCircle className="w-5 h-5" />
+          <span>Erreur: {error}</span>
         </div>
         <button
           onClick={handleRefresh}
