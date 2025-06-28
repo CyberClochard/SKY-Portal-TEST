@@ -6,6 +6,7 @@ import DataTable from './components/DataTable'
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   const renderContent = () => {
     switch (activeTab) {
@@ -49,7 +50,12 @@ function App() {
   return (
     <ThemeProvider>
       <div className="h-screen bg-gray-100 dark:bg-gray-950 flex transition-colors duration-300">
-        <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
+        <Sidebar 
+          activeTab={activeTab} 
+          setActiveTab={setActiveTab}
+          isCollapsed={sidebarCollapsed}
+          setIsCollapsed={setSidebarCollapsed}
+        />
         <main className="flex-1 overflow-auto">
           <div className="p-8">
             {renderContent()}

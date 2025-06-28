@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { Search, RefreshCw, Filter, Download, ChevronLeft, ChevronRight, Eye, EyeOff, X, Save, Edit3, Check, AlertCircle, Plus, Minus, Trash2 } from 'lucide-react'
+import { Search, RefreshCw, Filter, Download, ChevronLeft, ChevronRight, Eye, EyeOff, X, Save, Edit3, Check, AlertCircle, Plus, Minus } from 'lucide-react'
 import { supabase, MasterRecord } from '../lib/supabase'
 
 const DataTable: React.FC = () => {
@@ -32,12 +32,6 @@ const DataTable: React.FC = () => {
   // États pour la confirmation d'édition du DOSSIER
   const [showDossierConfirm, setShowDossierConfirm] = useState(false)
   const [dossierEditData, setDossierEditData] = useState<{rowIndex: number, oldValue: string, newValue: string} | null>(null)
-  
-  // États pour la suppression
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-  const [deleteData, setDeleteData] = useState<{rowIndex: number, record: MasterRecord} | null>(null)
-  const [deletingRecord, setDeletingRecord] = useState(false)
-  const [deleteError, setDeleteError] = useState<string | null>(null)
   
   // Référence pour maintenir le focus sur le champ de recherche
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -191,9 +185,6 @@ const DataTable: React.FC = () => {
     setAddError(null)
     setShowDossierConfirm(false)
     setDossierEditData(null)
-    setShowDeleteConfirm(false)
-    setDeleteData(null)
-    setDeleteError(null)
     fetchData()
   }
 
@@ -470,64 +461,6 @@ const DataTable: React.FC = () => {
     }
   }
 
-  // Fonctions de suppression
-  const openDeleteConfirm = (rowIndex: number, record: MasterRecord) => {
-    setDeleteData({ rowIndex, record })
-    setShowDeleteConfirm(true)
-    setDeleteError(null)
-  }
-
-  const closeDeleteConfirm = () => {
-    setShowDeleteConfirm(false)
-    setDeleteData(null)
-    setDeleteError(null)
-  }
-
-  const confirmDelete = async () => {
-    if (!deleteData || !deleteData.record.DOSSIER) {
-      setDeleteError('Impossible de supprimer: DOSSIER manquant')
-      return
-    }
-
-    setDeletingRecord(true)
-    setDeleteError(null)
-
-    try {
-      // Supprimer de Supabase en utilisant DOSSIER comme clé
-      const { error } = await supabase
-        .from('MASTER')
-        .delete()
-        .eq('DOSSIER', deleteData.record.DOSSIER)
-
-      if (error) throw error
-
-      // Supprimer des données locales
-      setData(prevData => 
-        prevData.filter(item => item.DOSSIER !== deleteData.record.DOSSIER)
-      )
-
-      // Fermer la modal
-      closeDeleteConfirm()
-
-      // Afficher un message de succès temporaire
-      const successKey = 'delete-record-success'
-      setSaveSuccess(prev => new Set(prev.add(successKey)))
-      setTimeout(() => {
-        setSaveSuccess(prev => {
-          const newSet = new Set(prev)
-          newSet.delete(successKey)
-          return newSet
-        })
-      }, 3000)
-
-    } catch (err) {
-      console.error('Erreur lors de la suppression:', err)
-      setDeleteError(err instanceof Error ? err.message : 'Erreur lors de la suppression')
-    } finally {
-      setDeletingRecord(false)
-    }
-  }
-
   const totalPages = Math.ceil(data.length / itemsPerPage)
   const startIndex = (currentPage - 1) * itemsPerPage
   const endIndex = startIndex + itemsPerPage
@@ -664,16 +597,6 @@ const DataTable: React.FC = () => {
           <div className="flex items-center space-x-2 text-green-600 dark:text-green-400">
             <Check className="w-5 h-5" />
             <span>Nouveau record ajouté avec succès!</span>
-          </div>
-        </div>
-      )}
-
-      {/* Message de succès pour suppression */}
-      {saveSuccess.has('delete-record-success') && (
-        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg p-4">
-          <div className="flex items-center space-x-2 text-green-600 dark:text-green-400">
-            <Check className="w-5 h-5" />
-            <span>Record supprimé avec succès!</span>
           </div>
         </div>
       )}
@@ -989,76 +912,6 @@ const DataTable: React.FC = () => {
         </div>
       )}
 
-      {/* Modal de confirmation pour la suppression */}
-      {showDeleteConfirm && deleteData && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full">
-            <div className="p-6">
-              <div className="flex items-center space-x-3 mb-4">
-                <Trash2 className="w-6 h-6 text-red-500" />
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Confirmer la suppression
-                </h3>
-              </div>
-              <p className="text-gray-600 dark:text-gray-400 mb-4">
-                Êtes-vous sûr de vouloir supprimer définitivement cet enregistrement ? Cette action est irréversible.
-              </p>
-              <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-3 mb-4">
-                <p className="text-sm text-gray-700 dark:text-gray-300">
-                  <strong>Dossier:</strong> {deleteData.record.DOSSIER}
-                </p>
-                {deleteData.record.CLIENT && (
-                  <p className="text-sm text-gray-700 dark:text-gray-300">
-                    <strong>Client:</strong> {deleteData.record.CLIENT}
-                  </p>
-                )}
-                {deleteData.record.DATE && (
-                  <p className="text-sm text-gray-700 dark:text-gray-300">
-                    <strong>Date:</strong> {formatDate(deleteData.record.DATE)}
-                  </p>
-                )}
-              </div>
-              
-              {deleteError && (
-                <div className="mb-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg p-3">
-                  <div className="flex items-center space-x-2 text-red-600 dark:text-red-400">
-                    <AlertCircle className="w-4 h-4" />
-                    <span>{deleteError}</span>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex items-center justify-end space-x-3">
-                <button
-                  onClick={closeDeleteConfirm}
-                  disabled={deletingRecord}
-                  className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors disabled:opacity-50"
-                >
-                  Annuler
-                </button>
-                <button
-                  onClick={confirmDelete}
-                  disabled={deletingRecord}
-                  className="flex items-center space-x-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50"
-                >
-                  {deletingRecord ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      <span>Suppression...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Trash2 className="w-4 h-4" />
-                      <span>Supprimer définitivement</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Affichage du terme de recherche actif */}
       {activeSearchTerm && (
         <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-3">
@@ -1103,9 +956,6 @@ const DataTable: React.FC = () => {
           <table className="w-full">
             <thead className="bg-gray-50 dark:bg-gray-900">
               <tr>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-600 dark:text-gray-300 uppercase tracking-wider w-16">
-                  Actions
-                </th>
                 {visibleColumns.map((column) => (
                   <th
                     key={column}
@@ -1132,15 +982,6 @@ const DataTable: React.FC = () => {
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {currentData.map((record, rowIndex) => (
                 <tr key={rowIndex} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <button
-                      onClick={() => openDeleteConfirm(rowIndex, record)}
-                      className="p-2 text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                      title="Supprimer cet enregistrement"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </td>
                   {visibleColumns.map((column) => {
                     const cellKey = getCellKey(rowIndex, column)
                     const isEditing = editingCell?.rowIndex === rowIndex && editingCell?.column === column
@@ -1241,44 +1082,6 @@ const DataTable: React.FC = () => {
           </div>
         )}
       </div>
-
-      {/* Informations sur les colonnes */}
-      {columns.length > 0 && (
-        <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
-          <h3 className="text-gray-900 dark:text-white font-medium mb-2">
-            Colonnes disponibles ({columns.length}) - 
-            <span className="text-green-500 ml-1">{visibleColumns.length} visibles</span>
-            {visibleColumns.length < columns.length && (
-              <span className="text-orange-500 ml-1">• {columns.length - visibleColumns.length} masquées</span>
-            )}
-            <span className="text-blue-500 ml-1">• {columns.length} modifiables</span>
-          </h3>
-          <div className="flex flex-wrap gap-2">
-            {columns.map((column) => {
-              const isVisible = visibleColumns.includes(column)
-              return (
-                <button
-                  key={column}
-                  onClick={() => toggleColumnVisibility(column)}
-                  className={`px-3 py-1 rounded-full text-sm transition-all flex items-center space-x-1 ${
-                    isVisible
-                      ? 'bg-green-600 text-white hover:bg-green-700'
-                      : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600'
-                  }`}
-                >
-                  <span>{column === 'LTA' ? 'LTA' : formatColumnName(column)}</span>
-                  {column === 'DOSSIER' && <span className="text-xs">(CONF)</span>}
-                  {isVisible ? (
-                    <Eye className="w-3 h-3" />
-                  ) : (
-                    <EyeOff className="w-3 h-3" />
-                  )}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      )}
     </div>
   )
 }
