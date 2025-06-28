@@ -3,6 +3,7 @@ import { ThemeProvider } from './contexts/ThemeContext'
 import Sidebar from './components/Sidebar'
 import Dashboard from './components/Dashboard'
 import DataTable from './components/DataTable'
+import N8nIntegrationComponent from './components/N8nIntegration'
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
@@ -14,6 +15,8 @@ function App() {
         return <Dashboard />
       case 'data':
         return <DataTable />
+      case 'workflows':
+        return <N8nIntegrationComponent />
       case 'analytics':
         return (
           <div className="text-center py-12">

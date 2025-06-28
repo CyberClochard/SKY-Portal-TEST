@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { Search, RefreshCw, Filter, Download, ChevronLeft, ChevronRight, Eye, EyeOff, X, Save, Edit3, Check, AlertCircle, Plus, Minus } from 'lucide-react'
+import { Search, RefreshCw, Filter, Download, ChevronLeft, ChevronRight, Eye, EyeOff, X, Save, Edit3, Check, AlertCircle, Plus, Minus, ChevronsLeft, ChevronsRight, Zap } from 'lucide-react'
 import { supabase, MasterRecord } from '../lib/supabase'
+import { N8nIntegration, n8nHelpers } from '../lib/n8n'
 
 const DataTable: React.FC = () => {
   const [data, setData] = useState<MasterRecord[]>([])
@@ -12,7 +13,7 @@ const DataTable: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('')
   const [activeSearchTerm, setActiveSearchTerm] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
-  const [itemsPerPage] = useState(20)
+  const [itemsPerPage, setItemsPerPage] = useState(20)
   const [sortField, setSortField] = useState<string>('DOSSIER')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   
@@ -33,12 +34,34 @@ const DataTable: React.FC = () => {
   const [showDossierConfirm, setShowDossierConfirm] = useState(false)
   const [dossierEditData, setDossierEditData] = useState<{rowIndex: number, oldValue: string, newValue: string} | null>(null)
   
+  // États pour la navigation de page
+  const [pageInput, setPageInput] = useState('')
+  const [showPageInput, setShowPageInput] = useState(false)
+  
+  // États pour l'intégration n8n
+  const [n8nIntegration, setN8nIntegration] = useState<N8nIntegration | null>(null)
+  const [n8nLoading, setN8nLoading] = useState(false)
+  
   // Référence pour maintenir le focus sur le champ de recherche
   const searchInputRef = useRef<HTMLInputElement>(null)
   const columnsInitialized = useRef(false)
   const columnFilterRef = useRef<HTMLDivElement>(null)
   const editInputRef = useRef<HTMLInputElement>(null)
   const addFormRef = useRef<HTMLDivElement>(null)
+  const pageInputRef = useRef<HTMLInputElement>(null)
+
+  // Options pour le nombre de résultats par page
+  const itemsPerPageOptions = [10, 20, 50, 100, 200]
+
+  // Initialize n8n integration
+  useEffect(() => {
+    const n8nBaseUrl = localStorage.getItem('n8n_base_url')
+    const n8nApiKey = localStorage.getItem('n8n_api_key')
+    
+    if (n8nBaseUrl) {
+      setN8nIntegration(new N8nIntegration(n8nBaseUrl, n8nApiKey || undefined))
+    }
+  }, [])
 
   const fetchData = useCallback(async () => {
     try {
@@ -112,6 +135,11 @@ const DataTable: React.FC = () => {
     }
   }, [activeSearchTerm, sortField, sortDirection])
 
+  // Réinitialiser la page quand itemsPerPage change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [itemsPerPage])
+
   // Fermer le filtre de colonnes quand on clique à l'extérieur
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -145,6 +173,14 @@ const DataTable: React.FC = () => {
       editInputRef.current.select()
     }
   }, [editingCell])
+
+  // Focus sur l'input de page quand il est affiché
+  useEffect(() => {
+    if (showPageInput && pageInputRef.current) {
+      pageInputRef.current.focus()
+      pageInputRef.current.select()
+    }
+  }, [showPageInput])
 
   const handleSort = (field: string) => {
     if (sortField === field) {
@@ -185,6 +221,8 @@ const DataTable: React.FC = () => {
     setAddError(null)
     setShowDossierConfirm(false)
     setDossierEditData(null)
+    setShowPageInput(false)
+    setPageInput('')
     fetchData()
   }
 
@@ -213,6 +251,113 @@ const DataTable: React.FC = () => {
 
   const resetColumnVisibility = () => {
     setVisibleColumns([...columns])
+  }
+
+  // Fonctions de navigation de page
+  const totalPages = Math.ceil(data.length / itemsPerPage)
+  
+  const goToPage = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page)
+    }
+  }
+
+  const handlePageInputSubmit = () => {
+    const page = parseInt(pageInput)
+    if (!isNaN(page) && page >= 1 && page <= totalPages) {
+      setCurrentPage(page)
+      setShowPageInput(false)
+      setPageInput('')
+    }
+  }
+
+  const handlePageInputKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      handlePageInputSubmit()
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      setShowPageInput(false)
+      setPageInput('')
+    }
+  }
+
+  const handlePageInputBlur = () => {
+    // Only close if the input is empty or if we're not in the middle of submitting
+    if (pageInput === '') {
+      setShowPageInput(false)
+    }
+  }
+
+  const handleItemsPerPageChange = (newItemsPerPage: number) => {
+    setItemsPerPage(newItemsPerPage)
+  }
+
+  // n8n Integration functions
+  const syncDataWithN8n = async () => {
+    if (!n8nIntegration) {
+      setError('Configuration n8n manquante')
+      return
+    }
+
+    setN8nLoading(true)
+    try {
+      const webhookUrl = localStorage.getItem('n8n_webhook_url') || `${localStorage.getItem('n8n_base_url')}/webhook/data-sync`
+      
+      const formattedData = data.map(record => 
+        n8nHelpers.formatDataForN8n(record, {
+          'DOSSIER': 'fileNumber',
+          'CLIENT': 'clientName',
+          'DATE': 'date',
+          'DEPART': 'departure',
+          'ARRIVEE': 'arrival'
+        })
+      )
+
+      await n8nIntegration.triggerWorkflow({
+        webhookUrl,
+        method: 'POST'
+      }, {
+        action: 'data_sync',
+        records: formattedData,
+        timestamp: new Date().toISOString(),
+        source: 'SkyLogistics'
+      })
+
+      setSaveSuccess(prev => new Set(prev.add('n8n-sync')))
+      setTimeout(() => {
+        setSaveSuccess(prev => {
+          const newSet = new Set(prev)
+          newSet.delete('n8n-sync')
+          return newSet
+        })
+      }, 3000)
+
+    } catch (err) {
+      setError(`Erreur synchronisation n8n: ${err instanceof Error ? err.message : 'Erreur inconnue'}`)
+    } finally {
+      setN8nLoading(false)
+    }
+  }
+
+  const notifyRecordChange = async (action: 'create' | 'update' | 'delete', record: any) => {
+    if (!n8nIntegration) return
+
+    try {
+      const webhookUrl = localStorage.getItem('n8n_webhook_url') || `${localStorage.getItem('n8n_base_url')}/webhook/record-change`
+      
+      await n8nIntegration.triggerWorkflow({
+        webhookUrl,
+        method: 'POST'
+      }, {
+        action,
+        record: n8nHelpers.formatDataForN8n(record),
+        timestamp: new Date().toISOString(),
+        source: 'SkyLogistics'
+      })
+    } catch (err) {
+      console.warn('n8n notification failed:', err)
+    }
   }
 
   // Fonction pour générer le prochain numéro de dossier
@@ -327,6 +472,9 @@ const DataTable: React.FC = () => {
       // Ajouter aux données locales
       if (insertedData && insertedData.length > 0) {
         setData(prevData => [insertedData[0], ...prevData])
+        
+        // Notify n8n of new record
+        await notifyRecordChange('create', insertedData[0])
       }
 
       // Fermer le formulaire
@@ -420,13 +568,17 @@ const DataTable: React.FC = () => {
       if (error) throw error
 
       // Mettre à jour les données locales
+      const updatedRecord = { ...record, [column]: editValue || null }
       setData(prevData => 
         prevData.map(item => 
           item.DOSSIER === record.DOSSIER 
-            ? { ...item, [column]: editValue || null }
+            ? updatedRecord
             : item
         )
       )
+
+      // Notify n8n of record update
+      await notifyRecordChange('update', updatedRecord)
 
       // Marquer comme succès
       setSaveSuccess(prev => new Set(prev.add(cellKey)))
@@ -461,7 +613,6 @@ const DataTable: React.FC = () => {
     }
   }
 
-  const totalPages = Math.ceil(data.length / itemsPerPage)
   const startIndex = (currentPage - 1) * itemsPerPage
   const endIndex = startIndex + itemsPerPage
   const currentData = data.slice(startIndex, endIndex)
@@ -601,6 +752,16 @@ const DataTable: React.FC = () => {
         </div>
       )}
 
+      {/* Message de succès pour synchronisation n8n */}
+      {saveSuccess.has('n8n-sync') && (
+        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg p-4">
+          <div className="flex items-center space-x-2 text-green-600 dark:text-green-400">
+            <Zap className="w-5 h-5" />
+            <span>Données synchronisées avec n8n avec succès!</span>
+          </div>
+        </div>
+      )}
+
       {/* En-tête avec statistiques */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
@@ -612,12 +773,12 @@ const DataTable: React.FC = () => {
           <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{visibleColumns.length}/{columns.length}</p>
         </div>
         <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
-          <h3 className="text-gray-600 dark:text-gray-400 text-sm font-medium">Colonnes Modifiables</h3>
-          <p className="text-2xl font-bold text-green-500 mt-1">{columns.length}</p>
+          <h3 className="text-gray-600 dark:text-gray-400 text-sm font-medium">Page Actuelle</h3>
+          <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{currentPage}/{totalPages}</p>
         </div>
         <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
-          <h3 className="text-gray-600 dark:text-gray-400 text-sm font-medium">Statut</h3>
-          <p className="text-2xl font-bold text-green-500 mt-1">En ligne</p>
+          <h3 className="text-gray-600 dark:text-gray-400 text-sm font-medium">Résultats par page</h3>
+          <p className="text-2xl font-bold text-green-500 mt-1">{itemsPerPage}</p>
         </div>
       </div>
 
@@ -650,9 +811,40 @@ const DataTable: React.FC = () => {
             <Plus className="w-4 h-4" />
             <span>Nouveau</span>
           </button>
+          {/* Bouton de synchronisation n8n */}
+          {n8nIntegration && (
+            <button
+              onClick={syncDataWithN8n}
+              disabled={n8nLoading}
+              className="flex items-center space-x-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg transition-colors"
+            >
+              {n8nLoading ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <Zap className="w-4 h-4" />
+              )}
+              <span>Sync n8n</span>
+            </button>
+          )}
         </div>
         
         <div className="flex items-center space-x-2">
+          {/* Sélecteur de résultats par page */}
+          <div className="flex items-center space-x-2">
+            <span className="text-sm text-gray-600 dark:text-gray-400">Afficher:</span>
+            <select
+              value={itemsPerPage}
+              onChange={(e) => handleItemsPerPageChange(parseInt(e.target.value))}
+              className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              {itemsPerPageOptions.map(option => (
+                <option key={option} value={option}>
+                  {option} résultats
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="relative" ref={columnFilterRef}>
             <button
               onClick={() => setShowColumnFilter(!showColumnFilter)}
@@ -1052,31 +1244,91 @@ const DataTable: React.FC = () => {
           </table>
         </div>
 
-        {/* Pagination */}
+        {/* Pagination améliorée */}
         {totalPages > 1 && (
-          <div className="bg-gray-50 dark:bg-gray-900 px-6 py-3 flex items-center justify-between border-t border-gray-200 dark:border-gray-700">
+          <div className="bg-gray-50 dark:bg-gray-900 px-6 py-4 flex items-center justify-between border-t border-gray-200 dark:border-gray-700">
             <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
               <span>
                 Affichage {startIndex + 1} à {Math.min(endIndex, data.length)} sur {data.length} résultats
               </span>
             </div>
+            
             <div className="flex items-center space-x-2">
+              {/* Première page */}
               <button
-                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                onClick={() => goToPage(1)}
                 disabled={currentPage === 1}
                 className="p-2 rounded-lg bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-900 dark:text-white transition-colors border border-gray-300 dark:border-gray-700"
+                title="Première page"
+              >
+                <ChevronsLeft className="w-4 h-4" />
+              </button>
+              
+              {/* Page précédente */}
+              <button
+                onClick={() => goToPage(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="p-2 rounded-lg bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-900 dark:text-white transition-colors border border-gray-300 dark:border-gray-700"
+                title="Page précédente"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              <span className="px-3 py-1 text-sm text-gray-700 dark:text-gray-300">
-                Page {currentPage} sur {totalPages}
-              </span>
+
+              {/* Navigation directe vers une page */}
+              <div className="flex items-center space-x-2">
+                {showPageInput ? (
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Page</span>
+                    <input
+                      ref={pageInputRef}
+                      type="number"
+                      min="1"
+                      max={totalPages}
+                      value={pageInput}
+                      onChange={(e) => setPageInput(e.target.value)}
+                      onKeyPress={handlePageInputKeyPress}
+                      onBlur={handlePageInputBlur}
+                      className="w-16 px-2 py-1 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded text-center text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    <span className="text-sm text-gray-600 dark:text-gray-400">sur {totalPages}</span>
+                    <button
+                      onClick={handlePageInputSubmit}
+                      className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition-colors"
+                    >
+                      Aller
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setShowPageInput(true)
+                      setPageInput(currentPage.toString())
+                    }}
+                    className="px-3 py-1 text-sm text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                  >
+                    Page {currentPage} sur {totalPages}
+                  </button>
+                )}
+              </div>
+
+              {/* Page suivante */}
               <button
-                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                onClick={() => goToPage(currentPage + 1)}
                 disabled={currentPage === totalPages}
                 className="p-2 rounded-lg bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-900 dark:text-white transition-colors border border-gray-300 dark:border-gray-700"
+                title="Page suivante"
               >
                 <ChevronRight className="w-4 h-4" />
+              </button>
+              
+              {/* Dernière page */}
+              <button
+                onClick={() => goToPage(totalPages)}
+                disabled={currentPage === totalPages}
+                className="p-2 rounded-lg bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-900 dark:text-white transition-colors border border-gray-300 dark:border-gray-700"
+                title="Dernière page"
+              >
+                <ChevronsRight className="w-4 h-4" />
               </button>
             </div>
           </div>
