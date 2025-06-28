@@ -1,0 +1,782 @@
+import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { Search, RefreshCw, Filter, Download, ChevronLeft, ChevronRight, Eye, EyeOff, X, Save, Edit3, Check, AlertCircle } from 'lucide-react'
+import { supabase, MasterRecord } from '../lib/supabase'
+
+const DataTable: React.FC = () => {
+  const [data, setData] = useState<MasterRecord[]>([])
+  const [columns, setColumns] = useState<string[]>([])
+  const [visibleColumns, setVisibleColumns] = useState<string[]>([])
+  const [showColumnFilter, setShowColumnFilter] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [activeSearchTerm, setActiveSearchTerm] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage] = useState(20)
+  const [sortField, setSortField] = useState<string>('DATE')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
+  
+  // États pour l'édition
+  const [editingCell, setEditingCell] = useState<{rowIndex: number, column: string} | null>(null)
+  const [editValue, setEditValue] = useState<string>('')
+  const [savingCells, setSavingCells] = useState<Set<string>>(new Set())
+  const [saveErrors, setSaveErrors] = useState<Map<string, string>>(new Map())
+  const [saveSuccess, setSaveSuccess] = useState<Set<string>>(new Set())
+  
+  // Référence pour maintenir le focus sur le champ de recherche
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const columnsInitialized = useRef(false)
+  const columnFilterRef = useRef<HTMLDivElement>(null)
+  const editInputRef = useRef<HTMLInputElement>(null)
+
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      
+      let query = supabase
+        .from('MASTER')
+        .select('*')
+        .order(sortField, { ascending: sortDirection === 'asc' })
+      
+      if (activeSearchTerm && columns.length > 0) {
+        // Construire la recherche dynamiquement sur toutes les colonnes
+        const searchConditions = columns.map(col => `${col}.ilike.%${activeSearchTerm}%`).join(',')
+        if (searchConditions) {
+          query = query.or(searchConditions)
+        }
+      }
+
+      const { data: records, error } = await query
+      
+      if (error) throw error
+      
+      setData(records || [])
+      
+      // Extraire les colonnes dynamiquement du premier enregistrement (seulement la première fois)
+      if (records && records.length > 0 && !columnsInitialized.current) {
+        const dynamicColumns = Object.keys(records[0]).filter(key => 
+          records[0][key] !== null && records[0][key] !== undefined
+        )
+        setColumns(dynamicColumns)
+        setVisibleColumns(dynamicColumns) // Par défaut, toutes les colonnes sont visibles
+        columnsInitialized.current = true
+        
+        // Si c'est la première fois qu'on charge les données, définir le champ de tri par défaut
+        if (dynamicColumns.includes('DATE')) {
+          setSortField('DATE')
+        } else if (dynamicColumns.length > 0) {
+          setSortField(dynamicColumns[0])
+        }
+      }
+      
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur lors du chargement des données')
+      console.error('Erreur Supabase:', err)
+    } finally {
+      setLoading(false)
+    }
+  }, [activeSearchTerm, sortField, sortDirection, columns.length])
+
+  // Effet initial pour charger les données
+  useEffect(() => {
+    fetchData()
+  }, [])
+
+  // Effet pour recharger les données quand les paramètres de recherche/tri changent
+  useEffect(() => {
+    if (columnsInitialized.current) {
+      fetchData()
+    }
+  }, [activeSearchTerm, sortField, sortDirection])
+
+  // Fermer le filtre de colonnes quand on clique à l'extérieur
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (columnFilterRef.current && !columnFilterRef.current.contains(event.target as Node)) {
+        setShowColumnFilter(false)
+      }
+    }
+
+    if (showColumnFilter) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showColumnFilter])
+
+  // Focus sur l'input d'édition quand une cellule est en cours d'édition
+  useEffect(() => {
+    if (editingCell && editInputRef.current) {
+      editInputRef.current.focus()
+      editInputRef.current.select()
+    }
+  }, [editingCell])
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortField(field)
+      setSortDirection('asc')
+    }
+  }
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value)
+  }
+
+  const handleSearchSubmit = () => {
+    setActiveSearchTerm(searchTerm)
+    setCurrentPage(1)
+  }
+
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleSearchSubmit()
+    }
+  }
+
+  const handleRefresh = () => {
+    columnsInitialized.current = false
+    setColumns([])
+    setVisibleColumns([])
+    setData([])
+    setEditingCell(null)
+    setSavingCells(new Set())
+    setSaveErrors(new Map())
+    setSaveSuccess(new Set())
+    fetchData()
+  }
+
+  const toggleColumnVisibility = (columnName: string) => {
+    setVisibleColumns(prev => {
+      if (prev.includes(columnName)) {
+        // Ne pas permettre de masquer toutes les colonnes
+        if (prev.length === 1) return prev
+        return prev.filter(col => col !== columnName)
+      } else {
+        return [...prev, columnName]
+      }
+    })
+  }
+
+  const showAllColumns = () => {
+    setVisibleColumns([...columns])
+  }
+
+  const hideAllColumns = () => {
+    // Garder au moins une colonne visible
+    if (columns.length > 0) {
+      setVisibleColumns([columns[0]])
+    }
+  }
+
+  const resetColumnVisibility = () => {
+    setVisibleColumns([...columns])
+  }
+
+  // Fonctions d'édition
+  const startEditing = (rowIndex: number, column: string, currentValue: any) => {
+    if (column === 'DOSSIER') return // Ne pas permettre l'édition de la colonne DOSSIER
+    
+    setEditingCell({ rowIndex, column })
+    setEditValue(currentValue?.toString() || '')
+  }
+
+  const cancelEditing = () => {
+    setEditingCell(null)
+    setEditValue('')
+  }
+
+  const saveEdit = async (rowIndex: number, column: string) => {
+    const record = currentData[rowIndex]
+    if (!record || !record.DOSSIER) {
+      setSaveErrors(prev => new Map(prev.set(`${rowIndex}-${column}`, 'Impossible de sauvegarder: DOSSIER manquant')))
+      return
+    }
+
+    const cellKey = `${rowIndex}-${column}`
+    setSavingCells(prev => new Set(prev.add(cellKey)))
+    setSaveErrors(prev => {
+      const newMap = new Map(prev)
+      newMap.delete(cellKey)
+      return newMap
+    })
+
+    try {
+      // Mettre à jour dans Supabase en utilisant DOSSIER comme clé
+      const { error } = await supabase
+        .from('MASTER')
+        .update({ [column]: editValue || null })
+        .eq('DOSSIER', record.DOSSIER)
+
+      if (error) throw error
+
+      // Mettre à jour les données locales
+      setData(prevData => 
+        prevData.map(item => 
+          item.DOSSIER === record.DOSSIER 
+            ? { ...item, [column]: editValue || null }
+            : item
+        )
+      )
+
+      // Marquer comme succès
+      setSaveSuccess(prev => new Set(prev.add(cellKey)))
+      setTimeout(() => {
+        setSaveSuccess(prev => {
+          const newSet = new Set(prev)
+          newSet.delete(cellKey)
+          return newSet
+        })
+      }, 2000)
+
+      setEditingCell(null)
+      setEditValue('')
+
+    } catch (err) {
+      console.error('Erreur lors de la sauvegarde:', err)
+      setSaveErrors(prev => new Map(prev.set(cellKey, err instanceof Error ? err.message : 'Erreur de sauvegarde')))
+    } finally {
+      setSavingCells(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(cellKey)
+        return newSet
+      })
+    }
+  }
+
+  const handleEditKeyPress = (e: React.KeyboardEvent<HTMLInputElement>, rowIndex: number, column: string) => {
+    if (e.key === 'Enter') {
+      saveEdit(rowIndex, column)
+    } else if (e.key === 'Escape') {
+      cancelEditing()
+    }
+  }
+
+  const totalPages = Math.ceil(data.length / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const endIndex = startIndex + itemsPerPage
+  const currentData = data.slice(startIndex, endIndex)
+
+  const formatDate = (dateString: string | null | undefined) => {
+    if (!dateString || dateString.trim() === '') return '-'
+    
+    const cleanDateString = dateString.trim()
+    
+    try {
+      let date: Date | null = null
+      
+      // Format ISO standard (YYYY-MM-DD ou YYYY-MM-DDTHH:mm:ss)
+      if (/^\d{4}-\d{2}-\d{2}/.test(cleanDateString)) {
+        date = new Date(cleanDateString)
+      }
+      // Format français DD/MM/YYYY
+      else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(cleanDateString)) {
+        const [day, month, year] = cleanDateString.split('/')
+        date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
+      }
+      // Format DD-MM-YYYY
+      else if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(cleanDateString)) {
+        const [day, month, year] = cleanDateString.split('-')
+        date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
+      }
+      // Format MM/DD/YYYY (américain)
+      else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(cleanDateString)) {
+        const parts = cleanDateString.split('/')
+        const day = parseInt(parts[0])
+        const month = parseInt(parts[1])
+        
+        if (day > 12) {
+          date = new Date(parseInt(parts[2]), month - 1, day)
+        } else {
+          date = new Date(parseInt(parts[2]), day - 1, month)
+        }
+      }
+      // Format YYYY/MM/DD
+      else if (/^\d{4}\/\d{1,2}\/\d{1,2}$/.test(cleanDateString)) {
+        const [year, month, day] = cleanDateString.split('/')
+        date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
+      }
+      // Format DD.MM.YYYY
+      else if (/^\d{1,2}\.\d{1,2}\.\d{4}$/.test(cleanDateString)) {
+        const [day, month, year] = cleanDateString.split('.')
+        date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
+      }
+      // Timestamp numérique
+      else if (/^\d+$/.test(cleanDateString)) {
+        const timestamp = parseInt(cleanDateString)
+        date = new Date(timestamp < 10000000000 ? timestamp * 1000 : timestamp)
+      }
+      // Formats texte en anglais
+      else if (/^[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}$/.test(cleanDateString)) {
+        date = new Date(cleanDateString)
+      }
+      // Autres formats
+      else {
+        date = new Date(cleanDateString)
+      }
+      
+      if (!date || isNaN(date.getTime())) {
+        return cleanDateString
+      }
+      
+      return date.toLocaleDateString('fr-FR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      })
+      
+    } catch (error) {
+      return cleanDateString
+    }
+  }
+
+  const formatCellValue = (value: any, columnName: string) => {
+    if (value === null || value === undefined) return '-'
+    
+    if (columnName.toUpperCase().includes('DATE') && typeof value === 'string') {
+      return formatDate(value)
+    }
+    
+    return String(value)
+  }
+
+  const formatColumnName = (columnName: string) => {
+    return columnName
+      .replace(/_/g, ' ')
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ')
+  }
+
+  const isColumnEditable = (columnName: string) => {
+    return columnName !== 'DOSSIER'
+  }
+
+  const getCellKey = (rowIndex: number, column: string) => {
+    return `${rowIndex}-${column}`
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="flex items-center space-x-2 text-gray-400">
+          <RefreshCw className="w-6 h-6 animate-spin" />
+          <span>Chargement des données...</span>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-900/20 border border-red-700 rounded-lg p-4">
+        <div className="flex items-center space-x-2 text-red-400">
+          <span>❌ Erreur: {error}</span>
+        </div>
+        <button
+          onClick={handleRefresh}
+          className="mt-3 px-4 py-2 bg-red-700 hover:bg-red-600 text-white rounded-lg transition-colors"
+        >
+          Réessayer
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* En-tête avec statistiques */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+          <h3 className="text-gray-400 text-sm font-medium">Total Enregistrements</h3>
+          <p className="text-2xl font-bold text-white mt-1">{data.length}</p>
+        </div>
+        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+          <h3 className="text-gray-400 text-sm font-medium">Colonnes Visibles</h3>
+          <p className="text-2xl font-bold text-white mt-1">{visibleColumns.length}/{columns.length}</p>
+        </div>
+        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+          <h3 className="text-gray-400 text-sm font-medium">Colonnes Modifiables</h3>
+          <p className="text-2xl font-bold text-green-400 mt-1">{columns.filter(isColumnEditable).length}</p>
+        </div>
+        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+          <h3 className="text-gray-400 text-sm font-medium">Statut</h3>
+          <p className="text-2xl font-bold text-green-400 mt-1">En ligne</p>
+        </div>
+      </div>
+
+      {/* Barre d'outils */}
+      <div className="flex flex-col sm:flex-row gap-4 justify-between items-center">
+        <div className="flex items-center space-x-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              placeholder="Rechercher dans toutes les colonnes... (Appuyez sur Entrée)"
+              value={searchTerm}
+              onChange={handleSearchChange}
+              onKeyPress={handleKeyPress}
+              className="pl-10 pr-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent w-80"
+            />
+          </div>
+          <button
+            onClick={handleRefresh}
+            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span>Actualiser</span>
+          </button>
+        </div>
+        
+        <div className="flex items-center space-x-2">
+          <div className="relative" ref={columnFilterRef}>
+            <button
+              onClick={() => setShowColumnFilter(!showColumnFilter)}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors border ${
+                showColumnFilter
+                  ? 'bg-blue-600 text-white border-blue-500'
+                  : 'bg-gray-800 hover:bg-gray-700 text-white border-gray-700'
+              }`}
+            >
+              <Eye className="w-4 h-4" />
+              <span>Colonnes</span>
+              {visibleColumns.length < columns.length && (
+                <span className="bg-orange-500 text-white text-xs px-2 py-1 rounded-full">
+                  {visibleColumns.length}/{columns.length}
+                </span>
+              )}
+            </button>
+
+            {/* Menu déroulant pour les colonnes */}
+            {showColumnFilter && (
+              <div className="absolute right-0 top-full mt-2 w-80 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 max-h-96 overflow-y-auto">
+                <div className="p-4 border-b border-gray-700">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-white font-medium">Visibilité des colonnes</h3>
+                    <button
+                      onClick={() => setShowColumnFilter(false)}
+                      className="text-gray-400 hover:text-white"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={showAllColumns}
+                      className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-sm rounded transition-colors"
+                    >
+                      Tout afficher
+                    </button>
+                    <button
+                      onClick={hideAllColumns}
+                      className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-sm rounded transition-colors"
+                    >
+                      Tout masquer
+                    </button>
+                    <button
+                      onClick={resetColumnVisibility}
+                      className="px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white text-sm rounded transition-colors"
+                    >
+                      Réinitialiser
+                    </button>
+                  </div>
+                </div>
+                <div className="p-2">
+                  {columns.map((column) => {
+                    const isVisible = visibleColumns.includes(column)
+                    const isLastVisible = visibleColumns.length === 1 && isVisible
+                    const isEditable = isColumnEditable(column)
+                    
+                    return (
+                      <div
+                        key={column}
+                        className={`flex items-center justify-between p-2 rounded hover:bg-gray-700 transition-colors ${
+                          isLastVisible ? 'opacity-50' : ''
+                        }`}
+                      >
+                        <div className="flex items-center space-x-3">
+                          <button
+                            onClick={() => !isLastVisible && toggleColumnVisibility(column)}
+                            disabled={isLastVisible}
+                            className={`p-1 rounded transition-colors ${
+                              isLastVisible
+                                ? 'cursor-not-allowed'
+                                : 'hover:bg-gray-600'
+                            }`}
+                          >
+                            {isVisible ? (
+                              <Eye className="w-4 h-4 text-green-400" />
+                            ) : (
+                              <EyeOff className="w-4 h-4 text-gray-400" />
+                            )}
+                          </button>
+                          <span className="text-gray-300 text-sm">
+                            {formatColumnName(column)}
+                          </span>
+                          {!isEditable && (
+                            <span className="text-xs bg-gray-600 text-gray-300 px-2 py-1 rounded">
+                              Lecture seule
+                            </span>
+                          )}
+                          {isEditable && (
+                            <Edit3 className="w-3 h-3 text-blue-400" />
+                          )}
+                        </div>
+                        {isLastVisible && (
+                          <span className="text-xs text-orange-400">
+                            Dernière visible
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+          
+          <button className="flex items-center space-x-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors border border-gray-700">
+            <Filter className="w-4 h-4" />
+            <span>Filtrer</span>
+          </button>
+          <button className="flex items-center space-x-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors">
+            <Download className="w-4 h-4" />
+            <span>Exporter</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Affichage du terme de recherche actif */}
+      {activeSearchTerm && (
+        <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-3">
+          <div className="flex items-center justify-between">
+            <span className="text-blue-300">
+              Recherche active: <strong>"{activeSearchTerm}"</strong> dans {columns.length} colonnes
+            </span>
+            <button
+              onClick={() => {
+                setActiveSearchTerm('')
+                setSearchTerm('')
+                setCurrentPage(1)
+              }}
+              className="text-blue-400 hover:text-blue-300 text-sm"
+            >
+              Effacer
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Indicateur de colonnes masquées */}
+      {visibleColumns.length < columns.length && (
+        <div className="bg-orange-900/20 border border-orange-700 rounded-lg p-3">
+          <div className="flex items-center justify-between">
+            <span className="text-orange-300">
+              <strong>{columns.length - visibleColumns.length}</strong> colonne(s) masquée(s) sur {columns.length}
+            </span>
+            <button
+              onClick={showAllColumns}
+              className="text-orange-400 hover:text-orange-300 text-sm"
+            >
+              Tout afficher
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Info sur l'édition */}
+      <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-3">
+        <div className="flex items-center space-x-2 text-blue-300">
+          <Edit3 className="w-4 h-4" />
+          <span>
+            Cliquez sur une cellule pour l'éditer (sauf colonne DOSSIER). 
+            <strong>Entrée</strong> pour sauvegarder, <strong>Échap</strong> pour annuler.
+          </span>
+        </div>
+      </div>
+
+      {/* Tableau */}
+      <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-900">
+              <tr>
+                {visibleColumns.map((column) => (
+                  <th
+                    key={column}
+                    onClick={() => handleSort(column)}
+                    className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-800 transition-colors whitespace-nowrap"
+                  >
+                    <div className="flex items-center space-x-1">
+                      <span>{formatColumnName(column)}</span>
+                      {!isColumnEditable(column) && (
+                        <span className="text-xs bg-gray-600 text-gray-300 px-1 py-0.5 rounded">
+                          RO
+                        </span>
+                      )}
+                      {sortField === column && (
+                        <span className="text-blue-400">
+                          {sortDirection === 'asc' ? '↑' : '↓'}
+                        </span>
+                      )}
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-700">
+              {currentData.map((record, rowIndex) => (
+                <tr key={rowIndex} className="hover:bg-gray-700 transition-colors">
+                  {visibleColumns.map((column) => {
+                    const cellKey = getCellKey(rowIndex, column)
+                    const isEditing = editingCell?.rowIndex === rowIndex && editingCell?.column === column
+                    const isSaving = savingCells.has(cellKey)
+                    const hasError = saveErrors.has(cellKey)
+                    const isSuccess = saveSuccess.has(cellKey)
+                    const isEditable = isColumnEditable(column)
+                    
+                    return (
+                      <td key={column} className="px-6 py-4 whitespace-nowrap text-sm text-gray-300 relative">
+                        {isEditing ? (
+                          <div className="flex items-center space-x-2">
+                            <input
+                              ref={editInputRef}
+                              type="text"
+                              value={editValue}
+                              onChange={(e) => setEditValue(e.target.value)}
+                              onKeyPress={(e) => handleEditKeyPress(e, rowIndex, column)}
+                              className="bg-gray-700 border border-blue-500 rounded px-2 py-1 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 min-w-0 flex-1"
+                            />
+                            <button
+                              onClick={() => saveEdit(rowIndex, column)}
+                              disabled={isSaving}
+                              className="p-1 bg-green-600 hover:bg-green-700 text-white rounded transition-colors disabled:opacity-50"
+                            >
+                              <Check className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={cancelEditing}
+                              className="p-1 bg-gray-600 hover:bg-gray-700 text-white rounded transition-colors"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div 
+                            className={`max-w-xs truncate cursor-pointer relative ${
+                              isEditable ? 'hover:bg-gray-600 rounded px-2 py-1 -mx-2 -my-1' : ''
+                            } ${
+                              isSaving ? 'opacity-50' : ''
+                            } ${
+                              hasError ? 'bg-red-900/30 border border-red-700 rounded px-2 py-1 -mx-2 -my-1' : ''
+                            } ${
+                              isSuccess ? 'bg-green-900/30 border border-green-700 rounded px-2 py-1 -mx-2 -my-1' : ''
+                            }`}
+                            title={
+                              hasError 
+                                ? `Erreur: ${saveErrors.get(cellKey)}` 
+                                : formatCellValue(record[column], column)
+                            }
+                            onClick={() => isEditable && !isSaving && startEditing(rowIndex, column, record[column])}
+                          >
+                            {formatCellValue(record[column], column)}
+                            {isSaving && (
+                              <RefreshCw className="w-3 h-3 animate-spin absolute top-1 right-1 text-blue-400" />
+                            )}
+                            {hasError && (
+                              <AlertCircle className="w-3 h-3 absolute top-1 right-1 text-red-400" />
+                            )}
+                            {isSuccess && (
+                              <Check className="w-3 h-3 absolute top-1 right-1 text-green-400" />
+                            )}
+                          </div>
+                        )}
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="bg-gray-900 px-6 py-3 flex items-center justify-between border-t border-gray-700">
+            <div className="flex items-center text-sm text-gray-400">
+              <span>
+                Affichage {startIndex + 1} à {Math.min(endIndex, data.length)} sur {data.length} résultats
+              </span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+                className="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-white transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="px-3 py-1 text-sm text-gray-300">
+                Page {currentPage} sur {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages}
+                className="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-white transition-colors"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Informations sur les colonnes */}
+      {columns.length > 0 && (
+        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+          <h3 className="text-white font-medium mb-2">
+            Colonnes disponibles ({columns.length}) - 
+            <span className="text-green-400 ml-1">{visibleColumns.length} visibles</span>
+            {visibleColumns.length < columns.length && (
+              <span className="text-orange-400 ml-1">• {columns.length - visibleColumns.length} masquées</span>
+            )}
+            <span className="text-blue-400 ml-1">• {columns.filter(isColumnEditable).length} modifiables</span>
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            {columns.map((column) => {
+              const isVisible = visibleColumns.includes(column)
+              const isEditable = isColumnEditable(column)
+              return (
+                <button
+                  key={column}
+                  onClick={() => toggleColumnVisibility(column)}
+                  className={`px-3 py-1 rounded-full text-sm transition-all flex items-center space-x-1 ${
+                    isVisible
+                      ? 'bg-green-600 text-white hover:bg-green-700'
+                      : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                  }`}
+                >
+                  <span>{formatColumnName(column)}</span>
+                  {!isEditable && <span className="text-xs">(RO)</span>}
+                  {isVisible ? (
+                    <Eye className="w-3 h-3" />
+                  ) : (
+                    <EyeOff className="w-3 h-3" />
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default DataTable
