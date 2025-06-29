@@ -1,5 +1,5 @@
 import React from 'react'
-import { Database, BarChart3, Settings, Home, FileText, Users, ChevronLeft, Menu, Zap } from 'lucide-react'
+import { Database, BarChart3, Settings, Home, FileText, Users, ChevronLeft, Menu, Zap, Plane } from 'lucide-react'
 import ThemeToggle from './ThemeToggle'
 
 interface SidebarProps {
@@ -13,6 +13,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, isCollapsed,
   const menuItems = [
     { id: 'dashboard', icon: Home, label: 'Dashboard' },
     { id: 'data', icon: Database, label: 'Opérations' },
+    { id: 'flights', icon: Plane, label: 'Recherche Vols' },
     { id: 'workflows', icon: Zap, label: 'Workflows n8n' },
     { id: 'analytics', icon: BarChart3, label: 'Analyses' },
     { id: 'reports', icon: FileText, label: 'Rapports' },
@@ -85,7 +86,10 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, isCollapsed,
                   }`}
                   title={isCollapsed ? item.label : undefined}
                 >
-                  <Icon className={`w-5 h-5 flex-shrink-0 ${item.id === 'workflows' && !isActive ? 'text-purple-500' : ''}`} />
+                  <Icon className={`w-5 h-5 flex-shrink-0 ${
+                    item.id === 'workflows' && !isActive ? 'text-purple-500' : 
+                    item.id === 'flights' && !isActive ? 'text-blue-500' : ''
+                  }`} />
                   {!isCollapsed && (
                     <span className="font-medium whitespace-nowrap overflow-hidden">{item.label}</span>
                   )}

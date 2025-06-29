@@ -4,10 +4,14 @@ import Sidebar from './components/Sidebar'
 import Dashboard from './components/Dashboard'
 import DataTable from './components/DataTable'
 import N8nIntegrationComponent from './components/N8nIntegration'
+import FlightSearch from './components/FlightSearch'
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+
+  // Get n8n base URL from localStorage for flight search
+  const n8nBaseUrl = localStorage.getItem('n8n_base_url') || ''
 
   const renderContent = () => {
     switch (activeTab) {
@@ -15,6 +19,8 @@ function App() {
         return <Dashboard />
       case 'data':
         return <DataTable />
+      case 'flights':
+        return <FlightSearch n8nBaseUrl={n8nBaseUrl} />
       case 'workflows':
         return <N8nIntegrationComponent />
       case 'analytics':
