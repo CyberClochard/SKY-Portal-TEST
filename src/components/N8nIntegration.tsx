@@ -213,6 +213,21 @@ const N8nIntegrationComponent: React.FC = () => {
     }
   }
 
+  // Test CASS file processing workflow
+  const testCassProcessing = async () => {
+    const result = await executeWorkflow('57fbc81f-3166-4b75-bcc1-6badbe4ca8cc', 'Test Traitement CASS', {
+      fileName: 'test_cass_file.pdf',
+      fileSize: 1024000,
+      fileType: 'application/pdf',
+      testMode: true,
+      source: 'SkyLogistics Dashboard Test'
+    })
+
+    if (result) {
+      setSuccess('Test de traitement CASS effectué avec succès')
+    }
+  }
+
   // Test flight search workflow
   const testFlightSearch = async () => {
     const result = await executeWorkflow('1f5a8aaf-64cd-49a2-b56c-95d7554a17dc', 'Test Recherche de Vols', {
@@ -447,42 +462,83 @@ const N8nIntegrationComponent: React.FC = () => {
         </div>
       )}
 
-      {/* Flight Search Test */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
-        <div className="flex items-center space-x-3 mb-4">
-          <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
-            <Webhook className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Recherche de Vols Amadeus</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400">Test du workflow de recherche de vols</p>
-          </div>
-        </div>
-        
-        <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 mb-4">
-          <div className="flex items-start space-x-2">
-            <ExternalLink className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5" />
-            <div className="text-sm">
-              <p className="text-blue-800 dark:text-blue-200 font-medium">Webhook configuré (mode production):</p>
-              <p className="text-blue-700 dark:text-blue-300 font-mono text-xs break-all">
-                https://n8n.skylogistics.fr/webhook/1f5a8aaf-64cd-49a2-b56c-95d7554a17dc
-              </p>
+      {/* Webhook Tests */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* CASS File Processing Test */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="w-10 h-10 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-center justify-center">
+              <FileText className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Traitement CASS</h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Test du workflow de traitement des fichiers CASS</p>
             </div>
           </div>
+          
+          <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-4 mb-4">
+            <div className="flex items-start space-x-2">
+              <Webhook className="w-4 h-4 text-orange-600 dark:text-orange-400 mt-0.5" />
+              <div className="text-sm">
+                <p className="text-orange-800 dark:text-orange-200 font-medium">Webhook configuré :</p>
+                <p className="text-orange-700 dark:text-orange-300 font-mono text-xs break-all">
+                  https://n8n.skylogistics.fr/webhook-test/57fbc81f-3166-4b75-bcc1-6badbe4ca8cc
+                </p>
+              </div>
+            </div>
+          </div>
+          
+          <button
+            onClick={testCassProcessing}
+            disabled={loading['57fbc81f-3166-4b75-bcc1-6badbe4ca8cc'] || !n8nConfig.baseUrl}
+            className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white rounded-lg transition-colors"
+          >
+            {loading['57fbc81f-3166-4b75-bcc1-6badbe4ca8cc'] ? (
+              <RefreshCw className="w-4 h-4 animate-spin" />
+            ) : (
+              <Play className="w-4 h-4" />
+            )}
+            <span>Tester Traitement CASS</span>
+          </button>
         </div>
-        
-        <button
-          onClick={testFlightSearch}
-          disabled={loading['1f5a8aaf-64cd-49a2-b56c-95d7554a17dc'] || !n8nConfig.baseUrl}
-          className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg transition-colors"
-        >
-          {loading['1f5a8aaf-64cd-49a2-b56c-95d7554a17dc'] ? (
-            <RefreshCw className="w-4 h-4 animate-spin" />
-          ) : (
-            <Play className="w-4 h-4" />
-          )}
-          <span>Tester Recherche de Vols</span>
-        </button>
+
+        {/* Flight Search Test */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
+              <Webhook className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Recherche de Vols Amadeus</h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Test du workflow de recherche de vols</p>
+            </div>
+          </div>
+          
+          <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 mb-4">
+            <div className="flex items-start space-x-2">
+              <ExternalLink className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5" />
+              <div className="text-sm">
+                <p className="text-blue-800 dark:text-blue-200 font-medium">Webhook configuré :</p>
+                <p className="text-blue-700 dark:text-blue-300 font-mono text-xs break-all">
+                  https://n8n.skylogistics.fr/webhook/1f5a8aaf-64cd-49a2-b56c-95d7554a17dc
+                </p>
+              </div>
+            </div>
+          </div>
+          
+          <button
+            onClick={testFlightSearch}
+            disabled={loading['1f5a8aaf-64cd-49a2-b56c-95d7554a17dc'] || !n8nConfig.baseUrl}
+            className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg transition-colors"
+          >
+            {loading['1f5a8aaf-64cd-49a2-b56c-95d7554a17dc'] ? (
+              <RefreshCw className="w-4 h-4 animate-spin" />
+            ) : (
+              <Play className="w-4 h-4" />
+            )}
+            <span>Tester Recherche de Vols</span>
+          </button>
+        </div>
       </div>
 
       {/* Workflow Cards */}
@@ -933,8 +989,9 @@ const N8nIntegrationComponent: React.FC = () => {
       <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-6">
         <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-3">Configuration des workflows n8n</h3>
         <div className="space-y-2 text-sm text-blue-800 dark:text-blue-200">
-          <p>• <strong>Webhooks requis :</strong> Créez des webhooks dans n8n avec ces IDs :</p>
+          <p>• <strong>Webhooks configurés :</strong></p>
           <div className="ml-4 space-y-1 font-mono text-xs bg-blue-100 dark:bg-blue-900/30 p-2 rounded">
+            <p>- /webhook-test/57fbc81f-3166-4b75-bcc1-6badbe4ca8cc (Traitement CASS)</p>
             <p>- /webhook/1f5a8aaf-64cd-49a2-b56c-95d7554a17dc (Recherche de vols)</p>
             <p>- /webhook/email-notification</p>
             <p>- /webhook/report-generation</p>

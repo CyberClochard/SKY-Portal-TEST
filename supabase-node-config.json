@@ -1,0 +1,22 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "unmatchedCassItems",
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1560, 1080],
+      "id": "bae239d3-7b84-40c1-94ba-6ed56150ecbf",
+      "name": "Get many rows",
+      "credentials": {
+        "supabaseApi": {
+          "id": "dcnDpAiU4vxnMdmM",
+          "name": "Supabase account"
+        }
+      }
+    }
+  ]
+}
