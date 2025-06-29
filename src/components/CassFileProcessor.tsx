@@ -70,6 +70,7 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
     'Analyse et extraction des valeurs',
     'Formatage des montants',
     'Recherche des correspondances dans le Master',
+    'Récupération des données non trouvées',
     'Mise à jour de la base de données',
     'Génération du rapport final',
     'Envoi des notifications par email'
@@ -156,6 +157,43 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
     return stepInterval
   }
 
+  // Fonction pour faire une requête HTTP avec gestion d'erreur
+  const makeHttpRequest = async (url: string, data: any, description: string) => {
+    console.log(`Envoi de la requête: ${description}`)
+    console.log('URL:', url)
+    console.log('Data:', data)
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-File-Name': selectedFile?.name || '',
+        'X-File-Size': selectedFile?.size?.toString() || '',
+        'X-Source': 'SkyLogistics-Dashboard'
+      },
+      body: JSON.stringify(data)
+    })
+
+    console.log(`Réponse ${description}:`, response.status)
+
+    if (!response.ok) {
+      throw new Error(`Erreur ${description}: ${response.status} ${response.statusText}`)
+    }
+
+    const responseText = await response.text()
+    console.log(`Réponse brute ${description}:`, responseText)
+
+    if (responseText.trim() === '') {
+      return { success: true, message: `${description} terminé` }
+    }
+
+    try {
+      return JSON.parse(responseText)
+    } catch (jsonError) {
+      return { success: true, message: responseText || `${description} terminé` }
+    }
+  }
+
   const processFile = async () => {
     if (!selectedFile) {
       setError('Veuillez sélectionner un fichier PDF')
@@ -179,34 +217,35 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
     const stepInterval = simulateProcessingSteps()
 
     try {
-      // Use your specific webhook URL
-      const webhookUrl = `https://n8n.skylogistics.fr/webhook-test/57fbc81f-3166-4b75-bcc1-6badbe4ca8cc`
-      
-      console.log('Sending CASS file to webhook:', webhookUrl)
-      console.log('File details:', {
-        name: selectedFile.name,
-        size: selectedFile.size,
-        type: selectedFile.type
-      })
-
-      // Create FormData to send binary file
-      const formData = new FormData()
-      formData.append('file', selectedFile)
-      formData.append('fileName', selectedFile.name)
-      formData.append('fileSize', selectedFile.size.toString())
-      formData.append('fileType', selectedFile.type)
-      formData.append('source', 'SkyLogistics Dashboard')
-      formData.append('timestamp', new Date().toISOString())
-      formData.append('workflowId', 'cass-file-processing')
-      formData.append('uploadedBy', 'Admin')
-      formData.append('processingMode', 'production')
-
       const startTime = Date.now()
 
-      const response = await fetch(webhookUrl, {
+      // Préparer les données communes
+      const commonData = {
+        fileName: selectedFile.name,
+        fileSize: selectedFile.size,
+        fileType: selectedFile.type,
+        source: 'SkyLogistics Dashboard',
+        timestamp: new Date().toISOString(),
+        uploadedBy: 'Admin',
+        processingMode: 'production'
+      }
+
+      // URLs des deux workflows
+      const processingUrl = `https://n8n.skylogistics.fr/webhook-test/57fbc81f-3166-4b75-bcc1-6badbe4ca8cc`
+      const unmatchedUrl = `https://n8n.skylogistics.fr/webhook/get-unmatched-items` // Nouveau webhook pour les unmatched
+
+      // Créer FormData pour le fichier principal
+      const formData = new FormData()
+      formData.append('file', selectedFile)
+      Object.entries(commonData).forEach(([key, value]) => {
+        formData.append(key, value.toString())
+      })
+
+      // 1. Première requête : Traitement principal du fichier CASS
+      console.log('=== REQUÊTE 1: Traitement principal ===')
+      const processingResponse = await fetch(processingUrl, {
         method: 'POST',
         headers: {
-          // Don't set Content-Type header - let browser set it with boundary for FormData
           'X-File-Name': selectedFile.name,
           'X-File-Size': selectedFile.size.toString(),
           'X-Source': 'SkyLogistics-Dashboard'
@@ -214,106 +253,103 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
         body: formData
       })
 
+      if (!processingResponse.ok) {
+        throw new Error(`Erreur traitement principal: ${processingResponse.status} ${processingResponse.statusText}`)
+      }
+
+      const processingResult = await processingResponse.text()
+      console.log('Résultat traitement principal:', processingResult)
+
+      let mainData
+      try {
+        mainData = processingResult.trim() ? JSON.parse(processingResult) : {}
+      } catch {
+        mainData = { message: processingResult }
+      }
+
+      // 2. Deuxième requête : Récupération des éléments non trouvés
+      console.log('=== REQUÊTE 2: Récupération des unmatched ===')
+      const unmatchedResponse = await fetch(unmatchedUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Source': 'SkyLogistics-Dashboard'
+        },
+        body: JSON.stringify({
+          ...commonData,
+          requestType: 'getUnmatched',
+          fileName: selectedFile.name
+        })
+      })
+
+      let unmatchedData = { unmatchedItems: 0, unmatchedRecords: [] }
+      
+      if (unmatchedResponse.ok) {
+        const unmatchedResult = await unmatchedResponse.text()
+        console.log('Résultat unmatched:', unmatchedResult)
+        
+        try {
+          if (unmatchedResult.trim()) {
+            const parsed = JSON.parse(unmatchedResult)
+            unmatchedData = {
+              unmatchedItems: parsed.unmatchedItems || parsed.count || 0,
+              unmatchedRecords: parsed.unmatchedRecords || parsed.data || []
+            }
+          }
+        } catch {
+          console.warn('Impossible de parser la réponse unmatched, utilisation des valeurs par défaut')
+        }
+      } else {
+        console.warn('Erreur lors de la récupération des unmatched, utilisation des valeurs par défaut')
+      }
+
       const processingTime = ((Date.now() - startTime) / 1000).toFixed(2)
 
-      console.log('Response status:', response.status)
-      console.log('Response headers:', Object.fromEntries(response.headers.entries()))
-
-      if (!response.ok) {
-        throw new Error(`Erreur HTTP: ${response.status} ${response.statusText}`)
-      }
-
-      const responseText = await response.text()
-      console.log('Raw response:', responseText)
-
-      // Parse response
-      let data
-      if (responseText.trim() === '') {
-        // Empty response - workflow might be processing asynchronously
-        setSuccess('Fichier CASS envoyé avec succès. Le traitement est en cours...')
-        setResult({
-          success: true,
-          message: 'Traitement en cours - vous recevrez un email avec les résultats',
-          processingTime: `${processingTime}s`,
-          data: {
-            totalItems: 0,
-            totalNetPayable: '0,00',
-            processedItems: 0,
-            unmatchedItems: 0,
-            matchedItems: 0
-          }
-        })
-      } else {
-        try {
-          data = JSON.parse(responseText)
+      // 3. Combiner les résultats des deux requêtes
+      const combinedResult: CassProcessingResult = {
+        success: true,
+        message: 'Traitement terminé avec succès',
+        processingTime: `${processingTime}s`,
+        data: {
+          // Données du traitement principal
+          totalItems: mainData.totalItems || mainData.itemCount || mainData.totalLTA || 0,
+          totalNetPayable: mainData.totalNetPayable || mainData.totalAmount || '0,00',
+          processedItems: mainData.processedItems || mainData.totalItems || 0,
+          matchedItems: mainData.matchedItems || mainData.found || 0,
+          validationErrors: mainData.validationErrors || mainData.errors?.length || 0,
+          duplicates: mainData.duplicates || 0,
           
-          // Handle successful processing with enhanced data structure
-          if (data && data.success !== false) {
-            setSuccess('Fichier CASS traité avec succès!')
-            
-            // Enhanced result parsing
-            const processedResult: CassProcessingResult = {
-              success: true,
-              message: data.message || 'Traitement terminé avec succès',
-              processingTime: `${processingTime}s`,
-              executionId: data.executionId,
-              data: {
-                // Core metrics
-                totalItems: data.totalItems || data.itemCount || data.totalLTA || 0,
-                totalNetPayable: data.totalNetPayable || data.totalAmount || '0,00',
-                processedItems: data.processedItems || data.totalItems || 0,
-                unmatchedItems: data.unmatchedItems || data.notFound || 0,
-                matchedItems: data.matchedItems || data.found || (data.totalItems - data.unmatchedItems) || 0,
-                validationErrors: data.validationErrors || data.errors?.length || 0,
-                duplicates: data.duplicates || 0,
-                
-                // Summary information
-                summary: {
-                  totalLTA: data.summary?.totalLTA || data.totalItems || 0,
-                  totalAmount: data.summary?.totalAmount || data.totalNetPayable || '0,00',
-                  matchRate: data.summary?.matchRate || (data.totalItems > 0 ? Math.round((data.matchedItems / data.totalItems) * 100) : 0),
-                  processingTime: `${processingTime}s`,
-                  fileName: selectedFile.name,
-                  fileSize: selectedFile.size
-                },
-                
-                // Detailed results
-                details: {
-                  matched: data.details?.matched || data.matchedRecords || [],
-                  unmatched: data.details?.unmatched || data.unmatchedRecords || [],
-                  errors: data.details?.errors || data.validationErrors || []
-                }
-              },
-              
-              // Notifications status
-              notifications: {
-                emailSent: data.notifications?.emailSent || data.emailSent || false,
-                reportGenerated: data.notifications?.reportGenerated || data.reportGenerated || false,
-                masterUpdated: data.notifications?.masterUpdated || data.masterUpdated || false
-              }
-            }
-            
-            setResult(processedResult)
-          } else {
-            throw new Error(data.message || 'Erreur lors du traitement')
-          }
-        } catch (jsonError) {
-          // If not JSON, treat as success message
-          setSuccess('Fichier CASS envoyé avec succès')
-          setResult({
-            success: true,
-            message: responseText || 'Traitement terminé - vérifiez vos emails pour les résultats',
+          // Données des unmatched (deuxième requête)
+          unmatchedItems: unmatchedData.unmatchedItems,
+          
+          // Summary combiné
+          summary: {
+            totalLTA: mainData.totalItems || mainData.itemCount || 0,
+            totalAmount: mainData.totalNetPayable || mainData.totalAmount || '0,00',
+            matchRate: mainData.totalItems > 0 ? Math.round(((mainData.totalItems - unmatchedData.unmatchedItems) / mainData.totalItems) * 100) : 0,
             processingTime: `${processingTime}s`,
-            data: {
-              totalItems: 0,
-              totalNetPayable: '0,00',
-              processedItems: 0,
-              unmatchedItems: 0,
-              matchedItems: 0
-            }
-          })
+            fileName: selectedFile.name,
+            fileSize: selectedFile.size
+          },
+          
+          // Détails combinés
+          details: {
+            matched: mainData.details?.matched || mainData.matchedRecords || [],
+            unmatched: unmatchedData.unmatchedRecords || [],
+            errors: mainData.details?.errors || mainData.validationErrors || []
+          }
+        },
+        
+        // Notifications
+        notifications: {
+          emailSent: mainData.notifications?.emailSent || mainData.emailSent || false,
+          reportGenerated: mainData.notifications?.reportGenerated || mainData.reportGenerated || false,
+          masterUpdated: mainData.notifications?.masterUpdated || mainData.masterUpdated || false
         }
       }
+
+      setResult(combinedResult)
+      setSuccess(`Fichier CASS traité avec succès! ${combinedResult.data?.totalItems || 0} éléments traités, ${unmatchedData.unmatchedItems} non trouvés.`)
 
     } catch (err) {
       console.error('Processing error:', err)
@@ -380,7 +416,7 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
         <div className="text-right">
           <div className="flex items-center space-x-2 px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-full text-sm">
             <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-            <span>Webhook configuré</span>
+            <span>2 Webhooks configurés</span>
           </div>
         </div>
       </div>
@@ -409,13 +445,24 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
 
       {/* Webhook Status */}
       <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-4">
-        <div className="flex items-center space-x-3">
-          <Send className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-          <div>
-            <p className="font-medium text-blue-800 dark:text-blue-200">Webhook n8n configuré</p>
-            <p className="text-sm text-blue-700 dark:text-blue-300 font-mono">
-              https://n8n.skylogistics.fr/webhook-test/57fbc81f-3166-4b75-bcc1-6badbe4ca8cc
-            </p>
+        <div className="space-y-3">
+          <div className="flex items-center space-x-3">
+            <Send className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            <div>
+              <p className="font-medium text-blue-800 dark:text-blue-200">Webhook 1 - Traitement principal</p>
+              <p className="text-sm text-blue-700 dark:text-blue-300 font-mono">
+                https://n8n.skylogistics.fr/webhook-test/57fbc81f-3166-4b75-bcc1-6badbe4ca8cc
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-3">
+            <Database className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            <div>
+              <p className="font-medium text-blue-800 dark:text-blue-200">Webhook 2 - Récupération des unmatched</p>
+              <p className="text-sm text-blue-700 dark:text-blue-300 font-mono">
+                https://n8n.skylogistics.fr/webhook/get-unmatched-items
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -554,7 +601,7 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
             <div>
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Prêt pour le traitement</h3>
               <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">
-                Le fichier sera analysé et les données seront intégrées dans le système Master
+                Le fichier sera analysé via 2 workflows : traitement principal + récupération des unmatched
               </p>
             </div>
             <button
@@ -669,7 +716,7 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
               {/* Summary Information */}
               {result.data.summary && (
                 <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 mb-6">
-                  <h4 className="font-medium text-gray-900 dark:text-white mb-3">Résumé du traitement</h4>
+                  <h4 className="font-medium text-gray-900 dark:text-white mb-3">Résumé du traitement (données combinées)</h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
                     <div>
                       <span className="text-gray-600 dark:text-gray-400">Fichier:</span>
@@ -769,7 +816,7 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
                     <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-4">
                       <h4 className="font-medium text-yellow-900 dark:text-yellow-100 mb-3 flex items-center space-x-2">
                         <AlertTriangle className="w-4 h-4" />
-                        <span>Éléments non trouvés ({result.data.details.unmatched.length})</span>
+                        <span>Éléments non trouvés ({result.data.details.unmatched.length}) - Données de la 2ème requête</span>
                       </h4>
                       <div className="max-h-40 overflow-y-auto">
                         <div className="space-y-2">
@@ -831,27 +878,27 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
       {/* Workflow Information */}
       <div className="bg-gray-50 dark:bg-gray-900/20 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">
-          Fonctionnalités du traitement CASS
+          Architecture à 2 workflows
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-800 dark:text-gray-200">
           <div>
-            <h4 className="font-medium mb-2">Extraction automatique :</h4>
+            <h4 className="font-medium mb-2">Workflow 1 - Traitement principal :</h4>
             <ul className="space-y-1 text-xs">
-              <li>• Routing (codes aéroport)</li>
-              <li>• Numéros AWB/LTA</li>
-              <li>• Poids des expéditions</li>
-              <li>• Montants nets payables</li>
-              <li>• Dates des opérations</li>
+              <li>• Extraction du PDF</li>
+              <li>• Analyse des données CASS</li>
+              <li>• Correspondances avec Master</li>
+              <li>• Calcul des totaux et montants</li>
+              <li>• Mise à jour de la base</li>
             </ul>
           </div>
           <div>
-            <h4 className="font-medium mb-2">Intégration intelligente :</h4>
+            <h4 className="font-medium mb-2">Workflow 2 - Récupération unmatched :</h4>
             <ul className="space-y-1 text-xs">
-              <li>• Correspondance avec fichier Master</li>
-              <li>• Mise à jour automatique des montants CASS</li>
-              <li>• Gestion des éléments non trouvés</li>
-              <li>• Rapports par email automatiques</li>
-              <li>• Validation et nettoyage des données</li>
+              <li>• Requête séparée pour les unmatched</li>
+              <li>• Données détaillées des non trouvés</li>
+              <li>• Raisons des échecs de correspondance</li>
+              <li>• Combinaison avec les résultats principaux</li>
+              <li>• Affichage unifié dans le dashboard</li>
             </ul>
           </div>
         </div>
@@ -861,37 +908,23 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
       <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-6">
         <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-3 flex items-center space-x-2">
           <Settings className="w-5 h-5" />
-          <span>Format de réponse attendu du workflow</span>
+          <span>Configuration des 2 webhooks</span>
         </h3>
         <div className="space-y-3 text-sm text-blue-800 dark:text-blue-200">
           <div>
-            <p className="font-medium mb-2">Structure JSON recommandée :</p>
-            <div className="bg-blue-100 dark:bg-blue-900/30 p-3 rounded font-mono text-xs space-y-1">
-              <p>{`{`}</p>
-              <p>  "success": true,</p>
-              <p>  "message": "Traitement terminé avec succès",</p>
-              <p>  "executionId": "workflow_execution_id",</p>
-              <p>  "totalItems": 45,</p>
-              <p>  "totalNetPayable": "12.345,67",</p>
-              <p>  "matchedItems": 42,</p>
-              <p>  "unmatchedItems": 3,</p>
-              <p>  "validationErrors": 0,</p>
-              <p>  "duplicates": 1,</p>
-              <p>  "summary": {`{`}</p>
-              <p>    "matchRate": 93,</p>
-              <p>    "processingTime": "2.5s"</p>
-              <p>  {`}`},</p>
-              <p>  "details": {`{`}</p>
-              <p>    "matched": [...],</p>
-              <p>    "unmatched": [...],</p>
-              <p>    "errors": [...]</p>
-              <p>  {`}`},</p>
-              <p>  "notifications": {`{`}</p>
-              <p>    "emailSent": true,</p>
-              <p>    "reportGenerated": true,</p>
-              <p>    "masterUpdated": true</p>
-              <p>  {`}`}</p>
-              <p>{`}`}</p>
+            <p className="font-medium mb-2">Webhook 1 - Traitement principal :</p>
+            <div className="bg-blue-100 dark:bg-blue-900/30 p-3 rounded font-mono text-xs">
+              <p>URL: /webhook-test/57fbc81f-3166-4b75-bcc1-6badbe4ca8cc</p>
+              <p>Méthode: POST (FormData avec fichier)</p>
+              <p>Retour: Données de traitement principal</p>
+            </div>
+          </div>
+          <div>
+            <p className="font-medium mb-2">Webhook 2 - Récupération unmatched :</p>
+            <div className="bg-blue-100 dark:bg-blue-900/30 p-3 rounded font-mono text-xs">
+              <p>URL: /webhook/get-unmatched-items</p>
+              <p>Méthode: POST (JSON)</p>
+              <p>Retour: Liste des éléments non trouvés</p>
             </div>
           </div>
         </div>
