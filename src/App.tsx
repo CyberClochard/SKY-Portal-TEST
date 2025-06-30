@@ -5,6 +5,7 @@ import Dashboard from './components/Dashboard'
 import DataTable from './components/DataTable'
 import FlightSearch from './components/FlightSearch'
 import CassFileProcessor from './components/CassFileProcessor'
+import Settings from './components/Settings'
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
@@ -24,12 +25,7 @@ function App() {
       case 'cass':
         return <CassFileProcessor n8nBaseUrl={n8nBaseUrl} />
       case 'settings':
-        return (
-          <div className="text-center py-12">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Paramètres</h2>
-            <p className="text-gray-600 dark:text-gray-400">Section de paramètres en cours de développement</p>
-          </div>
-        )
+        return <Settings />
       default:
         return <Dashboard />
     }

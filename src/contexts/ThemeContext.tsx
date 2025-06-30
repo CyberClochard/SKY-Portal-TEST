@@ -5,6 +5,8 @@ type Theme = 'light' | 'dark'
 interface ThemeContextType {
   theme: Theme
   toggleTheme: () => void
+  customTheme: string
+  setCustomTheme: (themeId: string) => void
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
@@ -37,6 +39,10 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     return 'light'
   })
 
+  const [customTheme, setCustomThemeState] = useState<string>(() => {
+    return localStorage.getItem('customTheme') || 'default'
+  })
+
   useEffect(() => {
     // Save theme to localStorage
     localStorage.setItem('theme', theme)
@@ -49,12 +55,21 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     }
   }, [theme])
 
+  useEffect(() => {
+    // Save custom theme to localStorage
+    localStorage.setItem('customTheme', customTheme)
+  }, [customTheme])
+
   const toggleTheme = () => {
     setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light')
   }
 
+  const setCustomTheme = (themeId: string) => {
+    setCustomThemeState(themeId)
+  }
+
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+    <ThemeContext.Provider value={{ theme, toggleTheme, customTheme, setCustomTheme }}>
       {children}
     </ThemeContext.Provider>
   )

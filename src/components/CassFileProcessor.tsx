@@ -142,7 +142,8 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
     setDebugInfo(null)
 
     try {
-      const webhookUrl = `${currentN8nBaseUrl}/webhook-test/57fbc81f-3166-4b75-bcc1-6badbe4ca8cc`
+      // URL de production mise à jour
+      const webhookUrl = `https://n8n.skylogistics.fr/webhook/57fbc81f-3166-4b75-bcc1-6badbe4ca8cc`
       
       console.log('Sending file to:', webhookUrl)
       console.log('File details:', {
