@@ -1,0 +1,16 @@
+{
+  "totalItems": 150,
+  "matchedItems": 120,
+  "unmatchedItems": 30,
+  "totalNetPayable": "€15,250.00",
+  "details": {
+    "matched": [],
+    "unmatched": [],
+    "errors": []
+  },
+  "notifications": {
+    "emailSent": true,
+    "reportGenerated": true,
+    "masterUpdated": true
+  }
+}

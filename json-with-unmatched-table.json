@@ -1,0 +1,157 @@
+{
+  "totalItems": 150,
+  "matchedItems": 120,
+  "unmatchedItems": 30,
+  "totalNetPayable": "€15,250.00",
+  "details": {
+    "matched": [
+      {
+        "lta": "LTA001234",
+        "amount": "€125.50",
+        "status": "matched",
+        "clientName": "Air France",
+        "flightNumber": "AF1234",
+        "date": "2025-01-15"
+      },
+      {
+        "lta": "LTA001235",
+        "amount": "€89.75",
+        "status": "matched",
+        "clientName": "Air Algérie",
+        "flightNumber": "AH2156",
+        "date": "2025-01-15"
+      }
+    ],
+    "unmatched": [
+      {
+        "lta": "LTA001236",
+        "amount": "€156.25",
+        "reason": "LTA not found in Master database",
+        "clientName": "Unknown",
+        "flightNumber": "AF5678",
+        "date": "2025-01-15",
+        "lineNumber": 45,
+        "rawData": "LTA001236|AF5678|156.25|2025-01-15",
+        "suggestedActions": [
+          "Verify LTA number format",
+          "Check if client exists in Master",
+          "Manual review required"
+        ]
+      },
+      {
+        "lta": "LTA001237",
+        "amount": "€203.80",
+        "reason": "Client not found in Master database",
+        "clientName": "New Airline Co",
+        "flightNumber": "NA9999",
+        "date": "2025-01-15",
+        "lineNumber": 67,
+        "rawData": "LTA001237|NA9999|203.80|2025-01-15",
+        "suggestedActions": [
+          "Add new client to Master database",
+          "Verify airline code",
+          "Contact client for verification"
+        ]
+      },
+      {
+        "lta": "LTA001238",
+        "amount": "€75.00",
+        "reason": "Invalid amount format",
+        "clientName": "Air France",
+        "flightNumber": "AF1111",
+        "date": "2025-01-15",
+        "lineNumber": 89,
+        "rawData": "LTA001238|AF1111|75,00€|2025-01-15",
+        "suggestedActions": [
+          "Correct amount format",
+          "Remove currency symbols",
+          "Use decimal point instead of comma"
+        ]
+      },
+      {
+        "lta": "LTA001239",
+        "amount": "€0.00",
+        "reason": "Missing or zero amount",
+        "clientName": "Air Algérie",
+        "flightNumber": "AH3333",
+        "date": "2025-01-15",
+        "lineNumber": 112,
+        "rawData": "LTA001239|AH3333||2025-01-15",
+        "suggestedActions": [
+          "Verify transaction amount",
+          "Check original document",
+          "Manual amount entry required"
+        ]
+      },
+      {
+        "lta": "LTA001240",
+        "amount": "€345.60",
+        "reason": "Duplicate LTA number",
+        "clientName": "Tunisair",
+        "flightNumber": "TU7777",
+        "date": "2025-01-15",
+        "lineNumber": 134,
+        "rawData": "LTA001240|TU7777|345.60|2025-01-15",
+        "suggestedActions": [
+          "Check for duplicate entries",
+          "Verify LTA uniqueness",
+          "Review transaction history"
+        ]
+      }
+    ],
+    "errors": [
+      {
+        "line": 23,
+        "error": "Invalid date format",
+        "data": "LTA001241|AF2222|125.50|15/01/2025"
+      },
+      {
+        "line": 56,
+        "error": "Missing flight number",
+        "data": "LTA001242||89.75|2025-01-15"
+      }
+    ]
+  },
+  "unmatchedSummary": {
+    "totalUnmatched": 30,
+    "byReason": {
+      "ltaNotFound": 12,
+      "clientNotFound": 8,
+      "invalidAmount": 5,
+      "duplicateLta": 3,
+      "missingData": 2
+    },
+    "totalUnmatchedAmount": "€2,156.45",
+    "requiresManualReview": 18,
+    "canBeAutoCorrected": 12
+  },
+  "processingStats": {
+    "totalProcessed": 150,
+    "successRate": 80.0,
+    "errorRate": 1.3,
+    "unmatchedRate": 20.0,
+    "processingTime": "45.2s",
+    "fileName": "CASS_2025_01_15.pdf",
+    "fileSize": 2048576
+  },
+  "notifications": {
+    "emailSent": true,
+    "reportGenerated": true,
+    "masterUpdated": true,
+    "unmatchedReportCreated": true
+  },
+  "nextSteps": {
+    "recommendations": [
+      "Review 18 items requiring manual attention",
+      "Update Master database with 8 new clients",
+      "Correct 5 amount format issues",
+      "Investigate 3 duplicate LTA numbers"
+    ],
+    "automatedActions": [
+      "Generated unmatched items report",
+      "Sent notification to operations team",
+      "Updated processing statistics",
+      "Scheduled follow-up review"
+    ]
+  }
+}

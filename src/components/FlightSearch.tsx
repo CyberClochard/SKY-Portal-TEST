@@ -24,6 +24,12 @@ const FlightSearch: React.FC<FlightSearchProps> = ({ n8nBaseUrl }) => {
   const [lastSearchTime, setLastSearchTime] = useState<string | null>(null)
   const [debugInfo, setDebugInfo] = useState<any>(null)
 
+  // Get n8n configuration from localStorage (same as CASS processor)
+  const getN8nConfig = () => {
+    const baseUrl = localStorage.getItem('n8n_base_url') || 'https://n8n.skylogistics.fr'
+    return baseUrl
+  }
+
   // Common airport codes for quick selection
   const popularDestinations = [
     { code: 'ALG', name: 'Alger', country: 'Algérie' },
@@ -36,8 +42,12 @@ const FlightSearch: React.FC<FlightSearchProps> = ({ n8nBaseUrl }) => {
     { code: 'TMR', name: 'Tamanrasset', country: 'Algérie' },
   ]
 
-  // Check if form is valid (only check form fields, not n8n config)
+  // Check if form is valid
   const isFormValid = searchForm.destinationCode.trim().length === 3 && searchForm.departureDate.trim() !== ''
+
+  // Get current n8n configuration
+  const currentN8nBaseUrl = getN8nConfig()
+  const isN8nConfigured = currentN8nBaseUrl && currentN8nBaseUrl.trim() !== ''
 
   const formatDateTime = (dateTimeString: string) => {
     try {
@@ -70,7 +80,7 @@ const FlightSearch: React.FC<FlightSearchProps> = ({ n8nBaseUrl }) => {
       return
     }
 
-    if (!n8nBaseUrl) {
+    if (!isN8nConfigured) {
       setError('Configuration n8n requise pour effectuer la recherche. Veuillez configurer n8n dans la section Workflows.')
       return
     }
@@ -81,7 +91,7 @@ const FlightSearch: React.FC<FlightSearchProps> = ({ n8nBaseUrl }) => {
     setDebugInfo(null)
 
     try {
-      const webhookUrl = `${n8nBaseUrl}/webhook/1f5a8aaf-64cd-49a2-b56c-95d7554a17dc`
+      const webhookUrl = `${currentN8nBaseUrl}/webhook/1f5a8aaf-64cd-49a2-b56c-95d7554a17dc`
       
       console.log('Sending request to:', webhookUrl)
       console.log('Request data:', {
@@ -235,12 +245,22 @@ const FlightSearch: React.FC<FlightSearchProps> = ({ n8nBaseUrl }) => {
             <p className="text-gray-600 dark:text-gray-400">Trouvez les vols Air Algérie depuis Paris Orly</p>
           </div>
         </div>
-        {lastSearchTime && (
-          <div className="text-right">
-            <p className="text-sm text-gray-500 dark:text-gray-400">Dernière recherche</p>
-            <p className="text-gray-900 dark:text-white font-medium">{lastSearchTime}</p>
+        <div className="flex items-center space-x-4">
+          {lastSearchTime && (
+            <div className="text-right">
+              <p className="text-sm text-gray-500 dark:text-gray-400">Dernière recherche</p>
+              <p className="text-gray-900 dark:text-white font-medium">{lastSearchTime}</p>
+            </div>
+          )}
+          <div className={`flex items-center space-x-2 px-3 py-1 rounded-full text-sm ${
+            isN8nConfigured 
+              ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+              : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
+          }`}>
+            <div className={`w-2 h-2 rounded-full ${isN8nConfigured ? 'bg-green-500' : 'bg-red-500'}`}></div>
+            <span>{isN8nConfigured ? 'n8n configuré' : 'Configuration requise'}</span>
           </div>
-        )}
+        </div>
       </div>
 
       {/* Messages */}
@@ -265,14 +285,29 @@ const FlightSearch: React.FC<FlightSearchProps> = ({ n8nBaseUrl }) => {
         </div>
       )}
 
-      {/* N8n Configuration Warning */}
-      {!n8nBaseUrl && (
+      {/* N8n Configuration Status */}
+      {isN8nConfigured ? (
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-4">
+          <div className="flex items-center space-x-3">
+            <Plane className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            <div>
+              <p className="font-medium text-blue-800 dark:text-blue-200">Webhook de recherche de vols</p>
+              <p className="text-sm text-blue-700 dark:text-blue-300 font-mono">
+                {currentN8nBaseUrl}/webhook/1f5a8aaf-64cd-49a2-b56c-95d7554a17dc
+              </p>
+              <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                Recherche de vols Air Algérie via API Amadeus
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : (
         <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg p-4">
           <div className="flex items-center space-x-2 text-yellow-600 dark:text-yellow-400">
             <Settings className="w-5 h-5" />
             <div>
               <p className="font-medium">Configuration n8n requise</p>
-              <p className="text-sm mt-1">Veuillez configurer n8n dans la section "Workflows n8n" pour effectuer des recherches.</p>
+              <p className="text-sm mt-1">Veuillez configurer l'URL de base n8n dans la section "Workflows n8n" pour effectuer des recherches de vols.</p>
             </div>
           </div>
         </div>
@@ -375,7 +410,7 @@ const FlightSearch: React.FC<FlightSearchProps> = ({ n8nBaseUrl }) => {
           </div>
           <button
             onClick={searchFlights}
-            disabled={loading || !isFormValid}
+            disabled={loading || !isFormValid || !isN8nConfigured}
             className="flex items-center space-x-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
           >
             {loading ? (
@@ -477,6 +512,26 @@ const FlightSearch: React.FC<FlightSearchProps> = ({ n8nBaseUrl }) => {
           </p>
         </div>
       )}
+
+      {/* Configuration Help */}
+      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-6">
+        <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-3">Configuration du webhook de recherche</h3>
+        <div className="space-y-2 text-sm text-blue-800 dark:text-blue-200">
+          <p>• <strong>Webhook configuré :</strong></p>
+          <div className="ml-4 space-y-1 font-mono text-xs bg-blue-100 dark:bg-blue-900/30 p-2 rounded">
+            <p>URL: {isN8nConfigured ? `${currentN8nBaseUrl}/webhook/1f5a8aaf-64cd-49a2-b56c-95d7554a17dc` : 'Configuration requise'}</p>
+            <p>Méthode: POST (JSON)</p>
+            <p>Headers: destinationlocationcode, date</p>
+          </div>
+          <p>• <strong>Données envoyées :</strong> destinationCode, departureDate, source, timestamp</p>
+          <p>• <strong>Réponse attendue :</strong> Array de vols avec Flight Number, Departure Time, Arrival Time</p>
+          {!isN8nConfigured && (
+            <p className="text-yellow-700 dark:text-yellow-300">
+              ⚠️ <strong>Action requise :</strong> Configurez l'URL n8n dans la section "Workflows n8n"
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

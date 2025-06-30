@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { FileText, Upload, Database, Mail, CheckCircle, XCircle, RefreshCw, AlertTriangle, Download, Eye, Trash2, Clock, BarChart3, Settings, Send, FileCheck, TrendingUp, Users, Calendar } from 'lucide-react'
+import { FileText, Upload, Database, Mail, CheckCircle, XCircle, RefreshCw, AlertTriangle, Download, Eye, Trash2, Clock, BarChart3, Settings, Send, FileCheck, TrendingUp, Users, Calendar, Table, ExternalLink } from 'lucide-react'
 
 interface CassProcessingResult {
   success: boolean
@@ -37,6 +37,9 @@ interface CassProcessingResult {
         data: string
       }>
     }
+    // Nouvelles données du webhook n8n
+    unmatched?: any
+    rawResponse?: any
   }
   executionId?: string
   processingTime?: string
@@ -61,6 +64,13 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
   const [currentStep, setCurrentStep] = useState<string>('')
   const [isDragOver, setIsDragOver] = useState(false)
   const [showDetails, setShowDetails] = useState(false)
+  const [showUnmatchedTable, setShowUnmatchedTable] = useState(false)
+
+  // Get n8n configuration from localStorage
+  const getN8nConfig = () => {
+    const baseUrl = localStorage.getItem('n8n_base_url') || 'https://n8n.skylogistics.fr'
+    return baseUrl
+  }
 
   // Processing steps for user feedback
   const steps = [
@@ -139,6 +149,7 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
     setProcessingSteps([])
     setCurrentStep('')
     setShowDetails(false)
+    setShowUnmatchedTable(false)
   }
 
   const simulateProcessingSteps = () => {
@@ -157,40 +168,280 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
     return stepInterval
   }
 
-  // Fonction pour faire une requête HTTP avec gestion d'erreur
-  const makeHttpRequest = async (url: string, data: any, description: string) => {
-    console.log(`Envoi de la requête: ${description}`)
-    console.log('URL:', url)
-    console.log('Data:', data)
+  // Fonction pour parser les données du webhook n8n
+  const parseN8nResponse = (data: any) => {
+    console.log('Parsing n8n response:', data)
+    
+    // Extraire les valeurs selon le format de votre webhook
+    const totalItems = parseInt(data.totalItems) || 0
+    const totalNetPayable = data.totalNetPayable || '0.00'
+    const matchedItems = parseInt(data.matchedItems) || 0
+    const unmatchedItems = parseInt(data.unmatchedItems) || 0
+    
+    // Calculer le taux de correspondance
+    const matchRate = totalItems > 0 ? Math.round((matchedItems / totalItems) * 100) : 0
+    
+    // Traiter le champ unmatched qui contient des données supplémentaires
+    let additionalData = {}
+    if (data.unmatched) {
+      try {
+        // Si unmatched est une chaîne JSON, la parser
+        if (typeof data.unmatched === 'string') {
+          additionalData = JSON.parse(data.unmatched)
+        } else {
+          additionalData = data.unmatched
+        }
+      } catch (e) {
+        console.warn('Impossible de parser unmatched:', e)
+        additionalData = { raw: data.unmatched }
+      }
+    }
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-File-Name': selectedFile?.name || '',
-        'X-File-Size': selectedFile?.size?.toString() || '',
-        'X-Source': 'SkyLogistics-Dashboard'
+    return {
+      totalItems,
+      totalNetPayable: `€${totalNetPayable}`,
+      matchedItems,
+      unmatchedItems,
+      processedItems: totalItems,
+      validationErrors: 0, // À adapter selon vos données
+      duplicates: 0, // À adapter selon vos données
+      summary: {
+        totalLTA: totalItems,
+        totalAmount: `€${totalNetPayable}`,
+        matchRate,
+        fileName: selectedFile?.name || 'Unknown',
+        fileSize: selectedFile?.size || 0
       },
-      body: JSON.stringify(data)
-    })
+      details: {
+        matched: [], // À remplir avec les données détaillées si disponibles
+        unmatched: [], // À remplir avec les données détaillées si disponibles
+        errors: [] // À remplir avec les erreurs si disponibles
+      },
+      // Conserver les données brutes pour débogage
+      rawResponse: data,
+      unmatched: additionalData
+    }
+  }
 
-    console.log(`Réponse ${description}:`, response.status)
+  // Fonction pour analyser et structurer les données unmatched
+  const parseUnmatchedData = (unmatchedData: any) => {
+    if (!unmatchedData) return null
 
-    if (!response.ok) {
-      throw new Error(`Erreur ${description}: ${response.status} ${response.statusText}`)
+    // Si c'est un tableau d'objets (format structuré)
+    if (Array.isArray(unmatchedData)) {
+      return {
+        type: 'structured',
+        items: unmatchedData,
+        count: unmatchedData.length
+      }
     }
 
-    const responseText = await response.text()
-    console.log(`Réponse brute ${description}:`, responseText)
+    // Si c'est un objet avec des propriétés
+    if (typeof unmatchedData === 'object') {
+      // Chercher des tableaux dans l'objet
+      const arrays = Object.entries(unmatchedData).filter(([key, value]) => Array.isArray(value))
+      
+      if (arrays.length > 0) {
+        return {
+          type: 'object_with_arrays',
+          data: unmatchedData,
+          arrays: arrays.map(([key, value]) => ({ key, items: value as any[], count: (value as any[]).length }))
+        }
+      }
 
-    if (responseText.trim() === '') {
-      return { success: true, message: `${description} terminé` }
+      // Objet simple
+      return {
+        type: 'object',
+        data: unmatchedData,
+        entries: Object.entries(unmatchedData)
+      }
     }
 
-    try {
-      return JSON.parse(responseText)
-    } catch (jsonError) {
-      return { success: true, message: responseText || `${description} terminé` }
+    // Données brutes (string, number, etc.)
+    return {
+      type: 'raw',
+      data: unmatchedData
+    }
+  }
+
+  // Fonction pour rendre le tableau des unmatched
+  const renderUnmatchedTable = (unmatchedData: any) => {
+    const parsedData = parseUnmatchedData(unmatchedData)
+    
+    if (!parsedData) {
+      return (
+        <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+          Aucune donnée unmatched disponible
+        </div>
+      )
+    }
+
+    switch (parsedData.type) {
+      case 'structured':
+        // Tableau d'objets structurés
+        if (parsedData.items.length === 0) {
+          return (
+            <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+              Aucun élément non trouvé
+            </div>
+          )
+        }
+
+        // Déterminer les colonnes à partir du premier élément
+        const columns = Object.keys(parsedData.items[0])
+        
+        return (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+              <thead className="bg-gray-50 dark:bg-gray-800">
+                <tr>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    #
+                  </th>
+                  {columns.map((column) => (
+                    <th key={column} className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      {column}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+                {parsedData.items.map((item, index) => (
+                  <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                    <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                      {index + 1}
+                    </td>
+                    {columns.map((column) => (
+                      <td key={column} className="px-3 py-2 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                        {typeof item[column] === 'object' ? 
+                          JSON.stringify(item[column]) : 
+                          String(item[column] || '-')
+                        }
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+
+      case 'object_with_arrays':
+        // Objet contenant des tableaux
+        return (
+          <div className="space-y-6">
+            {parsedData.arrays.map(({ key, items, count }) => (
+              <div key={key} className="border border-gray-200 dark:border-gray-700 rounded-lg">
+                <div className="bg-gray-50 dark:bg-gray-800 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+                  <h5 className="font-medium text-gray-900 dark:text-white">
+                    {key} ({count} éléments)
+                  </h5>
+                </div>
+                <div className="p-4">
+                  {items.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                        <thead className="bg-gray-50 dark:bg-gray-800">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                              #
+                            </th>
+                            {Object.keys(items[0]).map((column) => (
+                              <th key={column} className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                                {column}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+                          {items.map((item, index) => (
+                            <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                              <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                                {index + 1}
+                              </td>
+                              {Object.keys(items[0]).map((column) => (
+                                <td key={column} className="px-3 py-2 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                                  {typeof item[column] === 'object' ? 
+                                    JSON.stringify(item[column]) : 
+                                    String(item[column] || '-')
+                                  }
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="text-center py-4 text-gray-500 dark:text-gray-400">
+                      Aucun élément dans {key}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+            
+            {/* Afficher les autres propriétés non-array */}
+            {Object.entries(parsedData.data).filter(([key, value]) => !Array.isArray(value)).length > 0 && (
+              <div className="border border-gray-200 dark:border-gray-700 rounded-lg">
+                <div className="bg-gray-50 dark:bg-gray-800 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+                  <h5 className="font-medium text-gray-900 dark:text-white">
+                    Autres propriétés
+                  </h5>
+                </div>
+                <div className="p-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {Object.entries(parsedData.data)
+                      .filter(([key, value]) => !Array.isArray(value))
+                      .map(([key, value]) => (
+                        <div key={key} className="flex justify-between items-center p-2 bg-gray-50 dark:bg-gray-800 rounded">
+                          <span className="font-medium text-gray-700 dark:text-gray-300">{key}:</span>
+                          <span className="text-gray-900 dark:text-white">
+                            {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )
+
+      case 'object':
+        // Objet simple
+        return (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {parsedData.entries.map(([key, value]) => (
+              <div key={key} className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <span className="font-medium text-gray-700 dark:text-gray-300">{key}:</span>
+                <span className="text-gray-900 dark:text-white">
+                  {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )
+
+      case 'raw':
+        // Données brutes
+        return (
+          <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+            <pre className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+              {typeof parsedData.data === 'object' ? 
+                JSON.stringify(parsedData.data, null, 2) : 
+                String(parsedData.data)
+              }
+            </pre>
+          </div>
+        )
+
+      default:
+        return (
+          <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+            Format de données non reconnu
+          </div>
+        )
     }
   }
 
@@ -200,7 +451,10 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
       return
     }
 
-    if (!n8nBaseUrl) {
+    // Get current n8n configuration
+    const currentN8nBaseUrl = getN8nConfig()
+    
+    if (!currentN8nBaseUrl || currentN8nBaseUrl.trim() === '') {
       setError('Configuration n8n requise. Veuillez configurer n8n dans la section Workflows.')
       return
     }
@@ -212,6 +466,7 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
     setProcessingSteps([])
     setCurrentStep('')
     setShowDetails(false)
+    setShowUnmatchedTable(false)
 
     // Start step simulation
     const stepInterval = simulateProcessingSteps()
@@ -230,20 +485,18 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
         processingMode: 'production'
       }
 
-      // URLs des deux workflows
-      const processingUrl = `https://n8n.skylogistics.fr/webhook-test/57fbc81f-3166-4b75-bcc1-6badbe4ca8cc`
-      const unmatchedUrl = `https://n8n.skylogistics.fr/webhook/get-unmatched-items` // Nouveau webhook pour les unmatched
+      // URL du webhook unique
+      const webhookUrl = `${currentN8nBaseUrl}/webhook-test/57fbc81f-3166-4b75-bcc1-6badbe4ca8cc`
 
-      // Créer FormData pour le fichier principal
+      // Créer FormData pour le fichier
       const formData = new FormData()
       formData.append('file', selectedFile)
       Object.entries(commonData).forEach(([key, value]) => {
         formData.append(key, value.toString())
       })
 
-      // 1. Première requête : Traitement principal du fichier CASS
-      console.log('=== REQUÊTE 1: Traitement principal ===')
-      const processingResponse = await fetch(processingUrl, {
+      console.log('=== REQUÊTE: Traitement CASS complet ===')
+      const response = await fetch(webhookUrl, {
         method: 'POST',
         headers: {
           'X-File-Name': selectedFile.name,
@@ -253,103 +506,43 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
         body: formData
       })
 
-      if (!processingResponse.ok) {
-        throw new Error(`Erreur traitement principal: ${processingResponse.status} ${processingResponse.statusText}`)
+      if (!response.ok) {
+        throw new Error(`Erreur traitement: ${response.status} ${response.statusText}`)
       }
 
-      const processingResult = await processingResponse.text()
-      console.log('Résultat traitement principal:', processingResult)
+      const responseText = await response.text()
+      console.log('Résultat traitement:', responseText)
 
-      let mainData
+      let data
       try {
-        mainData = processingResult.trim() ? JSON.parse(processingResult) : {}
+        data = responseText.trim() ? JSON.parse(responseText) : {}
       } catch {
-        mainData = { message: processingResult }
-      }
-
-      // 2. Deuxième requête : Récupération des éléments non trouvés
-      console.log('=== REQUÊTE 2: Récupération des unmatched ===')
-      const unmatchedResponse = await fetch(unmatchedUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Source': 'SkyLogistics-Dashboard'
-        },
-        body: JSON.stringify({
-          ...commonData,
-          requestType: 'getUnmatched',
-          fileName: selectedFile.name
-        })
-      })
-
-      let unmatchedData = { unmatchedItems: 0, unmatchedRecords: [] }
-      
-      if (unmatchedResponse.ok) {
-        const unmatchedResult = await unmatchedResponse.text()
-        console.log('Résultat unmatched:', unmatchedResult)
-        
-        try {
-          if (unmatchedResult.trim()) {
-            const parsed = JSON.parse(unmatchedResult)
-            unmatchedData = {
-              unmatchedItems: parsed.unmatchedItems || parsed.count || 0,
-              unmatchedRecords: parsed.unmatchedRecords || parsed.data || []
-            }
-          }
-        } catch {
-          console.warn('Impossible de parser la réponse unmatched, utilisation des valeurs par défaut')
-        }
-      } else {
-        console.warn('Erreur lors de la récupération des unmatched, utilisation des valeurs par défaut')
+        data = { message: responseText }
       }
 
       const processingTime = ((Date.now() - startTime) / 1000).toFixed(2)
 
-      // 3. Combiner les résultats des deux requêtes
-      const combinedResult: CassProcessingResult = {
+      // Parser les données selon le nouveau format
+      const parsedData = parseN8nResponse(data)
+      parsedData.summary!.processingTime = `${processingTime}s`
+
+      // Construire le résultat final
+      const finalResult: CassProcessingResult = {
         success: true,
         message: 'Traitement terminé avec succès',
         processingTime: `${processingTime}s`,
-        data: {
-          // Données du traitement principal
-          totalItems: mainData.totalItems || mainData.itemCount || mainData.totalLTA || 0,
-          totalNetPayable: mainData.totalNetPayable || mainData.totalAmount || '0,00',
-          processedItems: mainData.processedItems || mainData.totalItems || 0,
-          matchedItems: mainData.matchedItems || mainData.found || 0,
-          validationErrors: mainData.validationErrors || mainData.errors?.length || 0,
-          duplicates: mainData.duplicates || 0,
-          
-          // Données des unmatched (deuxième requête)
-          unmatchedItems: unmatchedData.unmatchedItems,
-          
-          // Summary combiné
-          summary: {
-            totalLTA: mainData.totalItems || mainData.itemCount || 0,
-            totalAmount: mainData.totalNetPayable || mainData.totalAmount || '0,00',
-            matchRate: mainData.totalItems > 0 ? Math.round(((mainData.totalItems - unmatchedData.unmatchedItems) / mainData.totalItems) * 100) : 0,
-            processingTime: `${processingTime}s`,
-            fileName: selectedFile.name,
-            fileSize: selectedFile.size
-          },
-          
-          // Détails combinés
-          details: {
-            matched: mainData.details?.matched || mainData.matchedRecords || [],
-            unmatched: unmatchedData.unmatchedRecords || [],
-            errors: mainData.details?.errors || mainData.validationErrors || []
-          }
-        },
+        data: parsedData,
         
-        // Notifications
+        // Notifications (à adapter selon vos données)
         notifications: {
-          emailSent: mainData.notifications?.emailSent || mainData.emailSent || false,
-          reportGenerated: mainData.notifications?.reportGenerated || mainData.reportGenerated || false,
-          masterUpdated: mainData.notifications?.masterUpdated || mainData.masterUpdated || false
+          emailSent: data.notifications?.emailSent || false,
+          reportGenerated: data.notifications?.reportGenerated || false,
+          masterUpdated: data.notifications?.masterUpdated || false
         }
       }
 
-      setResult(combinedResult)
-      setSuccess(`Fichier CASS traité avec succès! ${combinedResult.data?.totalItems || 0} éléments traités, ${unmatchedData.unmatchedItems} non trouvés.`)
+      setResult(finalResult)
+      setSuccess(`Fichier CASS traité avec succès! ${finalResult.data?.totalItems || 0} éléments traités, ${finalResult.data?.unmatchedItems || 0} non trouvés.`)
 
     } catch (err) {
       console.error('Processing error:', err)
@@ -400,6 +593,10 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
     document.body.removeChild(link)
   }
 
+  // Get current n8n configuration for display
+  const currentN8nBaseUrl = getN8nConfig()
+  const isN8nConfigured = currentN8nBaseUrl && currentN8nBaseUrl.trim() !== ''
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -414,9 +611,13 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
           </div>
         </div>
         <div className="text-right">
-          <div className="flex items-center space-x-2 px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-full text-sm">
-            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-            <span>2 Webhooks configurés</span>
+          <div className={`flex items-center space-x-2 px-3 py-1 rounded-full text-sm ${
+            isN8nConfigured 
+              ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+              : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
+          }`}>
+            <div className={`w-2 h-2 rounded-full ${isN8nConfigured ? 'bg-green-500' : 'bg-red-500'}`}></div>
+            <span>{isN8nConfigured ? 'Webhook configuré' : 'Configuration n8n requise'}</span>
           </div>
         </div>
       </div>
@@ -443,29 +644,33 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
         </div>
       )}
 
-      {/* Webhook Status */}
-      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-4">
-        <div className="space-y-3">
+      {/* N8n Configuration Status */}
+      {isN8nConfigured ? (
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-4">
           <div className="flex items-center space-x-3">
             <Send className="w-5 h-5 text-blue-600 dark:text-blue-400" />
             <div>
-              <p className="font-medium text-blue-800 dark:text-blue-200">Webhook 1 - Traitement principal</p>
+              <p className="font-medium text-blue-800 dark:text-blue-200">Webhook de traitement CASS</p>
               <p className="text-sm text-blue-700 dark:text-blue-300 font-mono">
-                https://n8n.skylogistics.fr/webhook-test/57fbc81f-3166-4b75-bcc1-6badbe4ca8cc
+                {currentN8nBaseUrl}/webhook-test/57fbc81f-3166-4b75-bcc1-6badbe4ca8cc
               </p>
-            </div>
-          </div>
-          <div className="flex items-center space-x-3">
-            <Database className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-            <div>
-              <p className="font-medium text-blue-800 dark:text-blue-200">Webhook 2 - Récupération des unmatched</p>
-              <p className="text-sm text-blue-700 dark:text-blue-300 font-mono">
-                https://n8n.skylogistics.fr/webhook/get-unmatched-items
+              <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                Traitement complet : extraction PDF, correspondances Master, récupération unmatched, notifications
               </p>
             </div>
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg p-4">
+          <div className="flex items-center space-x-2 text-yellow-600 dark:text-yellow-400">
+            <Settings className="w-5 h-5" />
+            <div>
+              <p className="font-medium">Configuration n8n requise</p>
+              <p className="text-sm mt-1">Veuillez configurer l'URL de base n8n dans la section "Workflows n8n" pour pouvoir traiter les fichiers CASS.</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* File Upload Section */}
       <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
@@ -601,12 +806,13 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
             <div>
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Prêt pour le traitement</h3>
               <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">
-                Le fichier sera analysé via 2 workflows : traitement principal + récupération des unmatched
+                Le fichier sera analysé via le workflow n8n complet : extraction, correspondances, unmatched et notifications
               </p>
             </div>
             <button
               onClick={processFile}
-              className="flex items-center space-x-2 px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors"
+              disabled={!isN8nConfigured}
+              className="flex items-center space-x-2 px-6 py-3 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
             >
               <Database className="w-5 h-5" />
               <span>Traiter le fichier</span>
@@ -641,6 +847,15 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
               
               {result.success && result.data && (
                 <div className="flex items-center space-x-2">
+                  {result.data.unmatched && (
+                    <button
+                      onClick={() => setShowUnmatchedTable(!showUnmatchedTable)}
+                      className="flex items-center space-x-2 px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors"
+                    >
+                      <Table className="w-4 h-4" />
+                      <span>{showUnmatchedTable ? 'Masquer' : 'Tableau'} Unmatched</span>
+                    </button>
+                  )}
                   <button
                     onClick={() => setShowDetails(!showDetails)}
                     className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
@@ -707,16 +922,44 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
                 <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-4 text-center">
                   <FileText className="w-8 h-8 text-orange-600 dark:text-orange-400 mx-auto mb-2" />
                   <p className="text-2xl font-bold text-orange-900 dark:text-orange-100">
-                    {result.data.totalNetPayable || '0,00'}€
+                    {result.data.totalNetPayable || '€0,00'}
                   </p>
                   <p className="text-sm text-orange-700 dark:text-orange-300">Montant total</p>
                 </div>
               </div>
 
+              {/* Unmatched Table Display */}
+              {showUnmatchedTable && result.data.unmatched && (
+                <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-700 mb-6">
+                  <div className="p-4 border-b border-yellow-200 dark:border-yellow-700">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <Table className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
+                        <h4 className="font-medium text-yellow-900 dark:text-yellow-100">
+                          Tableau des éléments non trouvés (Unmatched)
+                        </h4>
+                      </div>
+                      <button
+                        onClick={() => setShowUnmatchedTable(false)}
+                        className="text-yellow-600 dark:text-yellow-400 hover:text-yellow-800 dark:hover:text-yellow-200"
+                      >
+                        <XCircle className="w-5 h-5" />
+                      </button>
+                    </div>
+                    <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
+                      Données détaillées des éléments qui n'ont pas pu être traités automatiquement
+                    </p>
+                  </div>
+                  <div className="p-4">
+                    {renderUnmatchedTable(result.data.unmatched)}
+                  </div>
+                </div>
+              )}
+
               {/* Summary Information */}
               {result.data.summary && (
                 <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 mb-6">
-                  <h4 className="font-medium text-gray-900 dark:text-white mb-3">Résumé du traitement (données combinées)</h4>
+                  <h4 className="font-medium text-gray-900 dark:text-white mb-3">Résumé du traitement</h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
                     <div>
                       <span className="text-gray-600 dark:text-gray-400">Fichier:</span>
@@ -782,6 +1025,18 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
                 </div>
               )}
 
+              {/* Raw Data Debug (when details are shown) */}
+              {showDetails && result.data.rawResponse && (
+                <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 mb-6">
+                  <h4 className="font-medium text-gray-900 dark:text-white mb-3">Données brutes du webhook n8n</h4>
+                  <div className="bg-gray-100 dark:bg-gray-800 rounded p-3 overflow-x-auto">
+                    <pre className="text-xs text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                      {JSON.stringify(result.data.rawResponse, null, 2)}
+                    </pre>
+                  </div>
+                </div>
+              )}
+
               {/* Detailed Results */}
               {showDetails && result.data.details && (
                 <div className="space-y-4">
@@ -816,7 +1071,7 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
                     <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-4">
                       <h4 className="font-medium text-yellow-900 dark:text-yellow-100 mb-3 flex items-center space-x-2">
                         <AlertTriangle className="w-4 h-4" />
-                        <span>Éléments non trouvés ({result.data.details.unmatched.length}) - Données de la 2ème requête</span>
+                        <span>Éléments non trouvés ({result.data.details.unmatched.length})</span>
                       </h4>
                       <div className="max-h-40 overflow-y-auto">
                         <div className="space-y-2">
@@ -878,29 +1133,19 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
       {/* Workflow Information */}
       <div className="bg-gray-50 dark:bg-gray-900/20 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">
-          Architecture à 2 workflows
+          Workflow n8n unifié
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-800 dark:text-gray-200">
-          <div>
-            <h4 className="font-medium mb-2">Workflow 1 - Traitement principal :</h4>
-            <ul className="space-y-1 text-xs">
-              <li>• Extraction du PDF</li>
-              <li>• Analyse des données CASS</li>
-              <li>• Correspondances avec Master</li>
-              <li>• Calcul des totaux et montants</li>
-              <li>• Mise à jour de la base</li>
-            </ul>
-          </div>
-          <div>
-            <h4 className="font-medium mb-2">Workflow 2 - Récupération unmatched :</h4>
-            <ul className="space-y-1 text-xs">
-              <li>• Requête séparée pour les unmatched</li>
-              <li>• Données détaillées des non trouvés</li>
-              <li>• Raisons des échecs de correspondance</li>
-              <li>• Combinaison avec les résultats principaux</li>
-              <li>• Affichage unifié dans le dashboard</li>
-            </ul>
-          </div>
+        <div className="text-sm text-gray-800 dark:text-gray-200">
+          <h4 className="font-medium mb-2">Traitement complet en un seul workflow :</h4>
+          <ul className="space-y-1 text-xs ml-4">
+            <li>• Extraction du PDF et analyse des données CASS</li>
+            <li>• Recherche des correspondances dans le Master</li>
+            <li>• Récupération automatique des éléments non trouvés</li>
+            <li>• Calcul des totaux, montants et statistiques</li>
+            <li>• Mise à jour de la base de données</li>
+            <li>• Génération de rapports et envoi de notifications</li>
+            <li>• Retour des données complètes au dashboard</li>
+          </ul>
         </div>
       </div>
 
@@ -908,23 +1153,34 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
       <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-6">
         <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-3 flex items-center space-x-2">
           <Settings className="w-5 h-5" />
-          <span>Configuration des 2 webhooks</span>
+          <span>Configuration du webhook</span>
         </h3>
         <div className="space-y-3 text-sm text-blue-800 dark:text-blue-200">
           <div>
-            <p className="font-medium mb-2">Webhook 1 - Traitement principal :</p>
+            <p className="font-medium mb-2">Webhook unique de traitement CASS :</p>
             <div className="bg-blue-100 dark:bg-blue-900/30 p-3 rounded font-mono text-xs">
-              <p>URL: /webhook-test/57fbc81f-3166-4b75-bcc1-6badbe4ca8cc</p>
-              <p>Méthode: POST (FormData avec fichier)</p>
-              <p>Retour: Données de traitement principal</p>
+              <p>URL: {isN8nConfigured ? `${currentN8nBaseUrl}/webhook-test/57fbc81f-3166-4b75-bcc1-6badbe4ca8cc` : 'Configuration requise'}</p>
+              <p>Méthode: POST (FormData avec fichier PDF)</p>
+              <p>Retour attendu: JSON avec totalItems, totalNetPayable, matchedItems, unmatchedItems, unmatched</p>
             </div>
           </div>
           <div>
-            <p className="font-medium mb-2">Webhook 2 - Récupération unmatched :</p>
+            <p className="font-medium mb-2">Variables attendues dans la réponse :</p>
             <div className="bg-blue-100 dark:bg-blue-900/30 p-3 rounded font-mono text-xs">
-              <p>URL: /webhook/get-unmatched-items</p>
-              <p>Méthode: POST (JSON)</p>
-              <p>Retour: Liste des éléments non trouvés</p>
+              <p>• totalItems: "134" (nombre total d'éléments)</p>
+              <p>• totalNetPayable: "112406.94" (montant total)</p>
+              <p>• matchedItems: "" (éléments trouvés)</p>
+              <p>• unmatchedItems: "1" (éléments non trouvés)</p>
+              <p>• unmatched: {`{{ $json }}`} (objet JSON avec données détaillées des unmatched)</p>
+            </div>
+          </div>
+          <div>
+            <p className="font-medium mb-2">Affichage du tableau unmatched :</p>
+            <div className="bg-blue-100 dark:bg-blue-900/30 p-3 rounded text-xs">
+              <p>• Le bouton "Tableau Unmatched" apparaît si des données unmatched sont présentes</p>
+              <p>• Supporte les formats : tableau d'objets, objet avec tableaux, objet simple, données brutes</p>
+              <p>• Affichage adaptatif selon la structure des données reçues</p>
+              <p>• Colonnes générées automatiquement à partir des clés des objets</p>
             </div>
           </div>
         </div>
