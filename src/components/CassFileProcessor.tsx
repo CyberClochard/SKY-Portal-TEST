@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
-import { Upload, FileText, CheckCircle, XCircle, AlertCircle, RefreshCw, Download, Eye, Settings, Table, X, List, Grid, Code } from 'lucide-react'
+import React, { useState, useRef } from 'react'
+import { Upload, FileText, CheckCircle, XCircle, AlertCircle, RefreshCw, Download, Eye, Settings, Table, X } from 'lucide-react'
 
 interface CassProcessingResult {
   totalItems?: string | number
@@ -22,8 +22,10 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
   const [success, setSuccess] = useState<string | null>(null)
   const [showDetails, setShowDetails] = useState(false)
   const [showUnmatchedTable, setShowUnmatchedTable] = useState(false)
-  const [unmatchedDisplayFormat, setUnmatchedDisplayFormat] = useState<'table' | 'list' | 'cards' | 'json'>('table')
+  const [unmatchedDisplayFormat, setUnmatchedDisplayFormat] = useState<'table' | 'cards'>('table')
   const [debugInfo, setDebugInfo] = useState<any>(null)
+  const [dragActive, setDragActive] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Get n8n configuration from localStorage
   const getN8nConfig = () => {
@@ -67,6 +69,49 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
       }
     })
     return Array.from(allKeys)
+  }
+
+  // Format amount with thousands separator and euro symbol
+  const formatAmount = (amount: string | number) => {
+    if (!amount) return '€0'
+    
+    const numStr = String(amount).replace(/[^\d,.-]/g, '')
+    const num = parseFloat(numStr.replace(',', '.'))
+    
+    if (isNaN(num)) return '€0'
+    
+    return new Intl.NumberFormat('fr-FR', {
+      style: 'currency',
+      currency: 'EUR',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(num)
+  }
+
+  // Drag and drop handlers
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.type === 'dragenter' || e.type === 'dragover') {
+      setDragActive(true)
+    } else if (e.type === 'dragleave') {
+      setDragActive(false)
+    }
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragActive(false)
+    
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const droppedFile = e.dataTransfer.files[0]
+      setFile(droppedFile)
+      setResult(null)
+      setError(null)
+      setSuccess(null)
+      setDebugInfo(null)
+    }
   }
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -345,58 +390,7 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
     return <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4"><pre>{String(unmatchedData)}</pre></div>
   }
 
-  // Format 2: Liste verticale
-  const renderListFormat = (unmatchedData: any) => {
-    if (Array.isArray(unmatchedData)) {
-      return (
-        <div className="space-y-4">
-          {unmatchedData.map((item, index) => {
-            // Filtrer l'item pour exclure 'id'
-            const filteredItem = typeof item === 'object' && item !== null ? filterDisplayColumns(item) : item
-            
-            return (
-              <div key={index} className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-4 border border-yellow-200 dark:border-yellow-700">
-                <h4 className="font-semibold text-yellow-800 dark:text-yellow-200 mb-2">Élément #{index + 1}</h4>
-                {typeof filteredItem === 'object' && filteredItem !== null ? (
-                  <div className="space-y-2">
-                    {Object.entries(filteredItem).map(([key, value]) => (
-                      <div key={key} className="flex">
-                        <span className="font-medium text-yellow-700 dark:text-yellow-300 w-32 flex-shrink-0">{key}:</span>
-                        <span className="text-gray-900 dark:text-gray-100">{typeof value === 'object' ? JSON.stringify(value) : String(value)}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-gray-900 dark:text-gray-100">{String(filteredItem)}</p>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      )
-    }
-
-    if (typeof unmatchedData === 'object' && unmatchedData !== null) {
-      const filteredData = filterDisplayColumns(unmatchedData)
-      
-      return (
-        <div className="space-y-3">
-          {Object.entries(filteredData).map(([key, value]) => (
-            <div key={key} className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-3 border border-yellow-200 dark:border-yellow-700">
-              <div className="flex">
-                <span className="font-medium text-yellow-700 dark:text-yellow-300 w-32 flex-shrink-0">{key}:</span>
-                <span className="text-gray-900 dark:text-gray-100">{typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      )
-    }
-
-    return <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-4"><pre>{String(unmatchedData)}</pre></div>
-  }
-
-  // Format 3: Cartes
+  // Format 2: Cartes
   const renderCardsFormat = (unmatchedData: any) => {
     if (Array.isArray(unmatchedData)) {
       return (
@@ -423,7 +417,7 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
                         <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">{key}</p>
                         <p className="text-sm text-gray-900 dark:text-gray-100 truncate">
                           {key === 'netPayable' && typeof value === 'string' ? 
-                            `€${value.replace(',', '.')}` : 
+                            formatAmount(value) : 
                             typeof value === 'object' ? JSON.stringify(value) : String(value)
                           }
                         </p>
@@ -469,21 +463,6 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
     return <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-yellow-300 dark:border-yellow-700"><pre>{String(unmatchedData)}</pre></div>
   }
 
-  // Format 4: JSON brut (garde l'ID pour le débogage complet)
-  const renderJsonFormat = (unmatchedData: any) => {
-    return (
-      <div className="bg-gray-900 text-green-400 rounded-lg p-4 font-mono text-sm overflow-auto max-h-96">
-        <div className="mb-2 text-gray-400">// Données brutes unmatched (avec ID pour débogage)</div>
-        <pre>{JSON.stringify(unmatchedData, null, 2)}</pre>
-        <div className="mt-4 text-gray-400 text-xs">
-          Type: {typeof unmatchedData} | 
-          {Array.isArray(unmatchedData) ? ` Array[${unmatchedData.length}]` : ''} |
-          String length: {String(unmatchedData).length}
-        </div>
-      </div>
-    )
-  }
-
   // Fonction principale pour rendre les données unmatched
   const renderUnmatchedData = () => {
     if (!result?.unmatched) {
@@ -500,12 +479,8 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
     switch (unmatchedDisplayFormat) {
       case 'table':
         return renderTableFormat(unmatchedData)
-      case 'list':
-        return renderListFormat(unmatchedData)
       case 'cards':
         return renderCardsFormat(unmatchedData)
-      case 'json':
-        return renderJsonFormat(unmatchedData)
       default:
         return renderTableFormat(unmatchedData)
     }
@@ -557,22 +532,7 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
       )}
 
       {/* Configuration Status */}
-      {isN8nConfigured ? (
-        <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 rounded-lg p-4">
-          <div className="flex items-center space-x-3">
-            <Upload className="w-5 h-5 text-orange-600 dark:text-orange-400" />
-            <div>
-              <p className="font-medium text-orange-800 dark:text-orange-200">Webhook de traitement CASS</p>
-              <p className="text-sm text-orange-700 dark:text-orange-300 font-mono">
-                {currentN8nBaseUrl}/webhook-test/57fbc81f-3166-4b75-bcc1-6badbe4ca8cc
-              </p>
-              <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
-                Traitement automatique : extraction, correspondances, unmatched et notifications
-              </p>
-            </div>
-          </div>
-        </div>
-      ) : (
+      {!isN8nConfigured && (
         <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg p-4">
           <div className="flex items-center space-x-2 text-yellow-600 dark:text-yellow-400">
             <Settings className="w-5 h-5" />
@@ -595,7 +555,18 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
             <p className="text-gray-600 dark:text-gray-400 mb-6">Formats supportés: PDF, Excel, CSV</p>
             
             <div className="max-w-md mx-auto">
-              <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-orange-300 border-dashed rounded-lg cursor-pointer bg-orange-50 dark:bg-orange-900/20 hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors">
+              <div
+                className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
+                  dragActive
+                    ? 'border-orange-500 bg-orange-100 dark:bg-orange-900/30'
+                    : 'border-orange-300 bg-orange-50 dark:bg-orange-900/20 hover:bg-orange-100 dark:hover:bg-orange-900/30'
+                }`}
+                onDragEnter={handleDrag}
+                onDragLeave={handleDrag}
+                onDragOver={handleDrag}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+              >
                 <div className="flex flex-col items-center justify-center pt-5 pb-6">
                   <Upload className="w-8 h-8 mb-2 text-orange-500" />
                   <p className="text-sm text-orange-600 dark:text-orange-400">
@@ -603,12 +574,13 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
                   </p>
                 </div>
                 <input
+                  ref={fileInputRef}
                   type="file"
                   className="hidden"
                   onChange={handleFileSelect}
                   accept=".pdf,.xlsx,.xls,.csv"
                 />
-              </label>
+              </div>
             </div>
 
             {file && (
@@ -647,8 +619,8 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
           <div className="flex items-center space-x-3">
             <RefreshCw className="w-6 h-6 text-blue-600 dark:text-blue-400 animate-spin" />
             <div>
-              <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100">Prêt pour le traitement</h3>
-              <p className="text-blue-700 dark:text-blue-300">Le fichier sera analysé via le workflow n8n complet : extraction, correspondances, unmatched et notifications</p>
+              <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100">Traitement en cours</h3>
+              <p className="text-blue-700 dark:text-blue-300">Le fichier est en cours d'analyse via le workflow n8n : extraction, correspondances et notifications</p>
             </div>
           </div>
         </div>
@@ -664,7 +636,7 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
                 <CheckCircle className="w-6 h-6 text-green-600 dark:text-green-400" />
                 <div>
                   <h3 className="text-lg font-semibold text-green-900 dark:text-green-100">Traitement terminé avec succès</h3>
-                  <p className="text-green-700 dark:text-green-300">Temps de traitement: 11.57s</p>
+                  <p className="text-green-700 dark:text-green-300">Fichier analysé et traité automatiquement</p>
                 </div>
               </div>
               <div className="flex items-center space-x-2">
@@ -696,7 +668,7 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
           </div>
 
           {/* Statistics Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700 text-center">
               <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center mx-auto mb-2">
                 <FileText className="w-4 h-4 text-blue-600 dark:text-blue-400" />
@@ -721,27 +693,13 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
               <p className="text-sm text-gray-600 dark:text-gray-400">Non trouvés</p>
             </div>
 
-            <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700 text-center">
-              <div className="w-8 h-8 bg-red-100 dark:bg-red-900/30 rounded-lg flex items-center justify-center mx-auto mb-2">
-                <XCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
-              </div>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">0</p>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Erreurs</p>
-            </div>
-
-            <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700 text-center">
-              <div className="w-8 h-8 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center mx-auto mb-2">
-                <AlertCircle className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-              </div>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">0</p>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Doublons</p>
-            </div>
-
-            <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700 text-center">
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700 text-center">
               <div className="w-8 h-8 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-center justify-center mx-auto mb-2">
                 <FileText className="w-4 h-4 text-orange-600 dark:text-orange-400" />
               </div>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{result.totalNetPayable || '€0'}</p>
+              <p className="text-xl font-bold text-gray-900 dark:text-white break-words">
+                {formatAmount(result.totalNetPayable || '0')}
+              </p>
               <p className="text-sm text-gray-600 dark:text-gray-400">Montant total</p>
             </div>
           </div>
@@ -772,17 +730,6 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
                         <span>Tableau</span>
                       </button>
                       <button
-                        onClick={() => setUnmatchedDisplayFormat('list')}
-                        className={`flex items-center space-x-1 px-3 py-1 rounded text-sm transition-colors ${
-                          unmatchedDisplayFormat === 'list' 
-                            ? 'bg-yellow-600 text-white' 
-                            : 'text-yellow-700 dark:text-yellow-300 hover:bg-yellow-300 dark:hover:bg-yellow-700'
-                        }`}
-                      >
-                        <List className="w-3 h-3" />
-                        <span>Liste</span>
-                      </button>
-                      <button
                         onClick={() => setUnmatchedDisplayFormat('cards')}
                         className={`flex items-center space-x-1 px-3 py-1 rounded text-sm transition-colors ${
                           unmatchedDisplayFormat === 'cards' 
@@ -790,19 +737,8 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
                             : 'text-yellow-700 dark:text-yellow-300 hover:bg-yellow-300 dark:hover:bg-yellow-700'
                         }`}
                       >
-                        <Grid className="w-3 h-3" />
+                        <FileText className="w-3 h-3" />
                         <span>Cartes</span>
-                      </button>
-                      <button
-                        onClick={() => setUnmatchedDisplayFormat('json')}
-                        className={`flex items-center space-x-1 px-3 py-1 rounded text-sm transition-colors ${
-                          unmatchedDisplayFormat === 'json' 
-                            ? 'bg-yellow-600 text-white' 
-                            : 'text-yellow-700 dark:text-yellow-300 hover:bg-yellow-300 dark:hover:bg-yellow-700'
-                        }`}
-                      >
-                        <Code className="w-3 h-3" />
-                        <span>JSON</span>
                       </button>
                     </div>
                     <button
@@ -847,46 +783,31 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
               <div>
                 <p className="text-gray-600 dark:text-gray-400">Fichier:</p>
-                <p className="text-gray-900 dark:text-white font-medium">2047065-9215_202505_Cargo Sales Report-1.pdf</p>
+                <p className="text-gray-900 dark:text-white font-medium">{file?.name || 'N/A'}</p>
               </div>
               <div>
                 <p className="text-gray-600 dark:text-gray-400">Taille:</p>
-                <p className="text-gray-900 dark:text-white font-medium">227.94 KB</p>
+                <p className="text-gray-900 dark:text-white font-medium">
+                  {file ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : 'N/A'}
+                </p>
               </div>
               <div>
                 <p className="text-gray-600 dark:text-gray-400">Taux de correspondance:</p>
-                <p className="text-gray-900 dark:text-white font-medium">0%</p>
+                <p className="text-gray-900 dark:text-white font-medium">
+                  {result.totalItems && result.matchedItems ? 
+                    `${Math.round((Number(result.matchedItems) / Number(result.totalItems)) * 100)}%` : 
+                    '0%'
+                  }
+                </p>
               </div>
               <div>
-                <p className="text-gray-600 dark:text-gray-400">Temps de traitement:</p>
-                <p className="text-gray-900 dark:text-white font-medium">11.57s</p>
+                <p className="text-gray-600 dark:text-gray-400">Statut:</p>
+                <p className="text-gray-900 dark:text-white font-medium">Terminé</p>
               </div>
             </div>
           </div>
         </div>
       )}
-
-      {/* Configuration Help */}
-      <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 rounded-lg p-6">
-        <h3 className="text-lg font-semibold text-orange-900 dark:text-orange-100 mb-3">Configuration du webhook de traitement CASS</h3>
-        <div className="space-y-2 text-sm text-orange-800 dark:text-orange-200">
-          <p>• <strong>Webhook configuré :</strong></p>
-          <div className="ml-4 space-y-1 font-mono text-xs bg-orange-100 dark:bg-orange-900/30 p-2 rounded">
-            <p>URL: {isN8nConfigured ? `${currentN8nBaseUrl}/webhook-test/57fbc81f-3166-4b75-bcc1-6badbe4ca8cc` : 'Configuration requise'}</p>
-            <p>Méthode: POST (FormData)</p>
-            <p>Fichiers: PDF, Excel, CSV</p>
-          </div>
-          <p>• <strong>Données envoyées :</strong> file, fileName, fileSize, fileType, source, timestamp</p>
-          <p>• <strong>Réponse attendue :</strong> JSON avec totalItems, matchedItems, unmatchedItems, totalNetPayable, unmatched</p>
-          <p>• <strong>Format unmatched :</strong> Tableau d'objets avec structure {`{json: {...}, pairedItem: {...}}`} ou tableau simple</p>
-          <p>• <strong>Affichage :</strong> La colonne 'id' est automatiquement masquée dans tous les formats (sauf JSON brut pour débogage)</p>
-          {!isN8nConfigured && (
-            <p className="text-yellow-700 dark:text-yellow-300">
-              ⚠️ <strong>Action requise :</strong> Configurez l'URL n8n dans la section "Workflows n8n"
-            </p>
-          )}
-        </div>
-      </div>
     </div>
   )
 }

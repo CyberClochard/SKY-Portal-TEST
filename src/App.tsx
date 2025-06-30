@@ -3,7 +3,6 @@ import { ThemeProvider } from './contexts/ThemeContext'
 import Sidebar from './components/Sidebar'
 import Dashboard from './components/Dashboard'
 import DataTable from './components/DataTable'
-import N8nIntegrationComponent from './components/N8nIntegration'
 import FlightSearch from './components/FlightSearch'
 import CassFileProcessor from './components/CassFileProcessor'
 
@@ -24,29 +23,6 @@ function App() {
         return <FlightSearch n8nBaseUrl={n8nBaseUrl} />
       case 'cass':
         return <CassFileProcessor n8nBaseUrl={n8nBaseUrl} />
-      case 'workflows':
-        return <N8nIntegrationComponent />
-      case 'analytics':
-        return (
-          <div className="text-center py-12">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Analyses</h2>
-            <p className="text-gray-600 dark:text-gray-400">Section d'analyses en cours de développement</p>
-          </div>
-        )
-      case 'reports':
-        return (
-          <div className="text-center py-12">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Rapports</h2>
-            <p className="text-gray-600 dark:text-gray-400">Section de rapports en cours de développement</p>
-          </div>
-        )
-      case 'users':
-        return (
-          <div className="text-center py-12">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Utilisateurs</h2>
-            <p className="text-gray-600 dark:text-gray-400">Gestion des utilisateurs en cours de développement</p>
-          </div>
-        )
       case 'settings':
         return (
           <div className="text-center py-12">
