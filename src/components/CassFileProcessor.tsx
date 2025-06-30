@@ -34,6 +34,41 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
   const currentN8nBaseUrl = getN8nConfig()
   const isN8nConfigured = currentN8nBaseUrl && currentN8nBaseUrl.trim() !== ''
 
+  // Helper function to filter out 'id' column from display
+  const filterDisplayColumns = (data: any) => {
+    if (Array.isArray(data)) {
+      return data.map(item => {
+        if (typeof item === 'object' && item !== null) {
+          const { id, ...filteredItem } = item
+          return filteredItem
+        }
+        return item
+      })
+    }
+    
+    if (typeof data === 'object' && data !== null) {
+      const { id, ...filteredData } = data
+      return filteredData
+    }
+    
+    return data
+  }
+
+  // Helper function to get display columns (excluding 'id')
+  const getDisplayColumns = (data: any[]) => {
+    const allKeys = new Set<string>()
+    data.forEach(item => {
+      if (typeof item === 'object' && item !== null) {
+        Object.keys(item).forEach(key => {
+          if (key !== 'id') { // Exclure la colonne 'id'
+            allKeys.add(key)
+          }
+        })
+      }
+    })
+    return Array.from(allKeys)
+  }
+
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0]
     if (selectedFile) {
@@ -119,24 +154,52 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
       console.log('Raw unmatched data:', data.unmatched)
       console.log('Type of unmatched:', typeof data.unmatched)
       console.log('Is array?', Array.isArray(data.unmatched))
-      console.log('String representation:', String(data.unmatched))
-      console.log('JSON stringify:', JSON.stringify(data.unmatched))
 
-      // Traitement spécial pour la variable "unmatched"
+      // Traitement spécial pour la variable "unmatched" avec le nouveau format
       if (data.unmatched !== undefined) {
         let unmatchedData = data.unmatched
         
         console.log('=== PROCESSING UNMATCHED ===')
         console.log('Original unmatched:', unmatchedData)
         
+        // Si c'est un tableau d'objets avec structure {json: {...}, pairedItem: {...}}
+        if (Array.isArray(unmatchedData)) {
+          console.log('Unmatched is array, checking for json structure...')
+          
+          // Vérifier si chaque élément a une propriété 'json'
+          const hasJsonStructure = unmatchedData.every(item => 
+            typeof item === 'object' && 
+            item !== null && 
+            item.hasOwnProperty('json')
+          )
+          
+          if (hasJsonStructure) {
+            console.log('Found json structure, extracting json data...')
+            // Extraire les données du champ 'json' de chaque élément
+            const extractedData = unmatchedData.map(item => {
+              if (typeof item.json === 'string') {
+                try {
+                  return JSON.parse(item.json)
+                } catch (e) {
+                  console.warn('Failed to parse json string:', item.json)
+                  return item.json
+                }
+              }
+              return item.json
+            })
+            
+            console.log('Extracted data from json fields:', extractedData)
+            data.unmatched = extractedData
+          } else {
+            console.log('No json structure found, keeping original array')
+          }
+        }
         // Si c'est une string qui ressemble à du JSON, essayer de la parser
-        if (typeof unmatchedData === 'string') {
+        else if (typeof unmatchedData === 'string') {
           console.log('Unmatched is string, attempting to parse...')
           
-          // Nettoyer la string si nécessaire
           let cleanedString = unmatchedData.trim()
           
-          // Essayer plusieurs méthodes de parsing
           try {
             // Méthode 1: Parse direct
             const parsed1 = JSON.parse(cleanedString)
@@ -153,22 +216,18 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
               data.unmatched = parsed2
             } catch (e2) {
               console.log('Method 2 failed:', e2.message)
-              
-              try {
-                // Méthode 3: Eval (attention sécurité - seulement pour debug)
-                const parsed3 = eval('(' + cleanedString + ')')
-                console.log('Method 3 - Eval successful:', parsed3)
-                data.unmatched = parsed3
-              } catch (e3) {
-                console.log('Method 3 failed:', e3.message)
-                console.log('All parsing methods failed, keeping original string')
-              }
+              console.log('All parsing methods failed, keeping original string')
             }
           }
         }
         
         console.log('Final unmatched data:', data.unmatched)
         console.log('Final type:', typeof data.unmatched)
+        console.log('Final is array?', Array.isArray(data.unmatched))
+        if (Array.isArray(data.unmatched)) {
+          console.log('Array length:', data.unmatched.length)
+          console.log('First element:', data.unmatched[0])
+        }
       }
 
       setResult(data)
@@ -213,14 +272,8 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
         return <div className="text-center py-8"><p className="text-gray-500">Tableau vide</p></div>
       }
 
-      const allKeys = new Set<string>()
-      unmatchedData.forEach(item => {
-        if (typeof item === 'object' && item !== null) {
-          Object.keys(item).forEach(key => allKeys.add(key))
-        }
-      })
-
-      const columns = Array.from(allKeys)
+      // Utiliser la fonction helper pour obtenir les colonnes sans 'id'
+      const columns = getDisplayColumns(unmatchedData)
 
       return (
         <div className="overflow-x-auto">
@@ -261,7 +314,9 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
     }
 
     if (typeof unmatchedData === 'object' && unmatchedData !== null) {
-      const entries = Object.entries(unmatchedData)
+      // Filtrer l'objet pour exclure 'id'
+      const filteredData = filterDisplayColumns(unmatchedData)
+      const entries = Object.entries(filteredData)
       
       return (
         <div className="overflow-x-auto">
@@ -295,31 +350,38 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
     if (Array.isArray(unmatchedData)) {
       return (
         <div className="space-y-4">
-          {unmatchedData.map((item, index) => (
-            <div key={index} className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-4 border border-yellow-200 dark:border-yellow-700">
-              <h4 className="font-semibold text-yellow-800 dark:text-yellow-200 mb-2">Élément #{index + 1}</h4>
-              {typeof item === 'object' && item !== null ? (
-                <div className="space-y-2">
-                  {Object.entries(item).map(([key, value]) => (
-                    <div key={key} className="flex">
-                      <span className="font-medium text-yellow-700 dark:text-yellow-300 w-32 flex-shrink-0">{key}:</span>
-                      <span className="text-gray-900 dark:text-gray-100">{typeof value === 'object' ? JSON.stringify(value) : String(value)}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-gray-900 dark:text-gray-100">{String(item)}</p>
-              )}
-            </div>
-          ))}
+          {unmatchedData.map((item, index) => {
+            // Filtrer l'item pour exclure 'id'
+            const filteredItem = typeof item === 'object' && item !== null ? filterDisplayColumns(item) : item
+            
+            return (
+              <div key={index} className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-4 border border-yellow-200 dark:border-yellow-700">
+                <h4 className="font-semibold text-yellow-800 dark:text-yellow-200 mb-2">Élément #{index + 1}</h4>
+                {typeof filteredItem === 'object' && filteredItem !== null ? (
+                  <div className="space-y-2">
+                    {Object.entries(filteredItem).map(([key, value]) => (
+                      <div key={key} className="flex">
+                        <span className="font-medium text-yellow-700 dark:text-yellow-300 w-32 flex-shrink-0">{key}:</span>
+                        <span className="text-gray-900 dark:text-gray-100">{typeof value === 'object' ? JSON.stringify(value) : String(value)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-900 dark:text-gray-100">{String(filteredItem)}</p>
+                )}
+              </div>
+            )
+          })}
         </div>
       )
     }
 
     if (typeof unmatchedData === 'object' && unmatchedData !== null) {
+      const filteredData = filterDisplayColumns(unmatchedData)
+      
       return (
         <div className="space-y-3">
-          {Object.entries(unmatchedData).map(([key, value]) => (
+          {Object.entries(filteredData).map(([key, value]) => (
             <div key={key} className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-3 border border-yellow-200 dark:border-yellow-700">
               <div className="flex">
                 <span className="font-medium text-yellow-700 dark:text-yellow-300 w-32 flex-shrink-0">{key}:</span>
@@ -339,37 +401,54 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
     if (Array.isArray(unmatchedData)) {
       return (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {unmatchedData.map((item, index) => (
-            <div key={index} className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-yellow-300 dark:border-yellow-700 shadow-sm">
-              <div className="flex items-center justify-between mb-3">
-                <h4 className="font-semibold text-gray-900 dark:text-white">Élément #{index + 1}</h4>
-                <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-              </div>
-              {typeof item === 'object' && item !== null ? (
-                <div className="space-y-2">
-                  {Object.entries(item).slice(0, 5).map(([key, value]) => (
-                    <div key={key}>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">{key}</p>
-                      <p className="text-sm text-gray-900 dark:text-gray-100 truncate">{typeof value === 'object' ? JSON.stringify(value) : String(value)}</p>
-                    </div>
-                  ))}
-                  {Object.keys(item).length > 5 && (
-                    <p className="text-xs text-gray-500 dark:text-gray-400">... et {Object.keys(item).length - 5} autres propriétés</p>
-                  )}
+          {unmatchedData.map((item, index) => {
+            // Filtrer l'item pour exclure 'id'
+            const filteredItem = typeof item === 'object' && item !== null ? filterDisplayColumns(item) : item
+            
+            return (
+              <div key={index} className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-yellow-300 dark:border-yellow-700 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="font-semibold text-gray-900 dark:text-white">
+                    {typeof item === 'object' && item !== null && item.awb ? 
+                      `AWB: ${item.awb}` : 
+                      `Élément #${index + 1}`
+                    }
+                  </h4>
+                  <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
                 </div>
-              ) : (
-                <p className="text-sm text-gray-900 dark:text-gray-100">{String(item)}</p>
-              )}
-            </div>
-          ))}
+                {typeof filteredItem === 'object' && filteredItem !== null ? (
+                  <div className="space-y-2">
+                    {Object.entries(filteredItem).slice(0, 6).map(([key, value]) => (
+                      <div key={key}>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">{key}</p>
+                        <p className="text-sm text-gray-900 dark:text-gray-100 truncate">
+                          {key === 'netPayable' && typeof value === 'string' ? 
+                            `€${value.replace(',', '.')}` : 
+                            typeof value === 'object' ? JSON.stringify(value) : String(value)
+                          }
+                        </p>
+                      </div>
+                    ))}
+                    {Object.keys(filteredItem).length > 6 && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">... et {Object.keys(filteredItem).length - 6} autres propriétés</p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-900 dark:text-gray-100">{String(filteredItem)}</p>
+                )}
+              </div>
+            )
+          })}
         </div>
       )
     }
 
     if (typeof unmatchedData === 'object' && unmatchedData !== null) {
+      const filteredData = filterDisplayColumns(unmatchedData)
+      
       return (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {Object.entries(unmatchedData).map(([key, value]) => (
+          {Object.entries(filteredData).map(([key, value]) => (
             <div key={key} className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-yellow-300 dark:border-yellow-700 shadow-sm">
               <h4 className="font-semibold text-gray-900 dark:text-white mb-2">{key}</h4>
               <div className="text-sm text-gray-900 dark:text-gray-100">
@@ -390,11 +469,11 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
     return <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-yellow-300 dark:border-yellow-700"><pre>{String(unmatchedData)}</pre></div>
   }
 
-  // Format 4: JSON brut
+  // Format 4: JSON brut (garde l'ID pour le débogage complet)
   const renderJsonFormat = (unmatchedData: any) => {
     return (
       <div className="bg-gray-900 text-green-400 rounded-lg p-4 font-mono text-sm overflow-auto max-h-96">
-        <div className="mb-2 text-gray-400">// Données brutes unmatched</div>
+        <div className="mb-2 text-gray-400">// Données brutes unmatched (avec ID pour débogage)</div>
         <pre>{JSON.stringify(unmatchedData, null, 2)}</pre>
         <div className="mt-4 text-gray-400 text-xs">
           Type: {typeof unmatchedData} | 
@@ -675,7 +754,7 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
                   <div className="flex items-center space-x-3">
                     <Table className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
                     <h3 className="text-lg font-semibold text-yellow-800 dark:text-yellow-200">
-                      Données Unmatched - Format d'affichage
+                      Données Unmatched ({Array.isArray(result.unmatched) ? result.unmatched.length : 1} élément{Array.isArray(result.unmatched) && result.unmatched.length > 1 ? 's' : ''})
                     </h3>
                   </div>
                   <div className="flex items-center space-x-2">
@@ -735,7 +814,7 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
                   </div>
                 </div>
                 <p className="text-yellow-700 dark:text-yellow-300 text-sm mt-1">
-                  Données détaillées des éléments qui n'ont pas pu être traités automatiquement
+                  Données détaillées des éléments qui n'ont pas pu être traités automatiquement (colonne ID masquée)
                 </p>
               </div>
               <div className="p-6">
@@ -799,6 +878,8 @@ const CassFileProcessor: React.FC<CassFileProcessorProps> = ({ n8nBaseUrl }) => 
           </div>
           <p>• <strong>Données envoyées :</strong> file, fileName, fileSize, fileType, source, timestamp</p>
           <p>• <strong>Réponse attendue :</strong> JSON avec totalItems, matchedItems, unmatchedItems, totalNetPayable, unmatched</p>
+          <p>• <strong>Format unmatched :</strong> Tableau d'objets avec structure {`{json: {...}, pairedItem: {...}}`} ou tableau simple</p>
+          <p>• <strong>Affichage :</strong> La colonne 'id' est automatiquement masquée dans tous les formats (sauf JSON brut pour débogage)</p>
           {!isN8nConfigured && (
             <p className="text-yellow-700 dark:text-yellow-300">
               ⚠️ <strong>Action requise :</strong> Configurez l'URL n8n dans la section "Workflows n8n"
