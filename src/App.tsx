@@ -5,7 +5,9 @@ import Dashboard from './components/Dashboard'
 import DataTable from './components/DataTable'
 import FlightSearch from './components/FlightSearch'
 import CassFileProcessor from './components/CassFileProcessor'
+import Roadmap from './components/Roadmap'
 import Settings from './components/Settings'
+import { StockDashboard } from './components/stock'
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
@@ -24,6 +26,10 @@ function App() {
         return <FlightSearch n8nBaseUrl={n8nBaseUrl} />
       case 'cass':
         return <CassFileProcessor n8nBaseUrl={n8nBaseUrl} />
+      case 'stock':
+        return <StockDashboard />
+      case 'roadmap':
+        return <Roadmap />
       case 'settings':
         return <Settings />
       default:
@@ -33,7 +39,7 @@ function App() {
 
   return (
     <ThemeProvider>
-      <div className="h-screen bg-gray-100 dark:bg-gray-950 flex transition-colors duration-300">
+      <div className="min-h-screen bg-gray-100 dark:bg-gray-950 flex transition-colors duration-300">
         <Sidebar 
           activeTab={activeTab} 
           setActiveTab={setActiveTab}
@@ -41,7 +47,8 @@ function App() {
           setIsCollapsed={setSidebarCollapsed}
         />
         <main className="flex-1 overflow-auto">
-          <div className="p-8">
+          {/* Mobile padding to account for floating menu button */}
+          <div className="p-4 md:p-8 pt-20 md:pt-8">
             {renderContent()}
           </div>
         </main>

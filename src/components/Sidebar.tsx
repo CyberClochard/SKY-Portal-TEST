@@ -1,5 +1,5 @@
-import React from 'react'
-import { Database, Settings, Home, ChevronLeft, Menu, Plane, Upload } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { Database, Settings, Home, ChevronLeft, Menu, Plane, Upload, Zap, X, Package } from 'lucide-react'
 import ThemeToggle from './ThemeToggle'
 
 interface SidebarProps {
@@ -10,16 +10,169 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, isCollapsed, setIsCollapsed }) => {
+  const [isMobile, setIsMobile] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
+  // Detect mobile screen size
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+      if (window.innerWidth < 768) {
+        setIsCollapsed(true)
+        setMobileMenuOpen(false)
+      }
+    }
+
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [setIsCollapsed])
+
+  // Close mobile menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (isMobile && mobileMenuOpen) {
+        const sidebar = document.getElementById('mobile-sidebar')
+        if (sidebar && !sidebar.contains(event.target as Node)) {
+          setMobileMenuOpen(false)
+        }
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [isMobile, mobileMenuOpen])
+
   const menuItems = [
     { id: 'dashboard', icon: Home, label: 'Dashboard' },
     { id: 'data', icon: Database, label: 'Opérations' },
     { id: 'flights', icon: Plane, label: 'Recherche Vols' },
     { id: 'cass', icon: Upload, label: 'Fichier CASS' },
+    { id: 'stock', icon: Package, label: 'Stock LTA' },
+    { id: 'roadmap', icon: Zap, label: 'Roadmap 2025' },
     { id: 'settings', icon: Settings, label: 'Paramètres' },
   ]
 
+  const handleMenuItemClick = (tabId: string) => {
+    setActiveTab(tabId)
+    if (isMobile) {
+      setMobileMenuOpen(false)
+    }
+  }
+
+  const toggleMobileMenu = () => {
+    setMobileMenuOpen(!mobileMenuOpen)
+  }
+
+  // Mobile Menu Button (visible only on mobile)
+  if (isMobile) {
+    return (
+      <>
+        {/* Mobile Menu Button */}
+        <button
+          onClick={toggleMobileMenu}
+          className="fixed top-4 left-4 z-50 w-12 h-12 bg-theme-primary hover:opacity-90 text-white rounded-lg shadow-lg flex items-center justify-center md:hidden transition-all duration-200"
+          aria-label="Toggle mobile menu"
+        >
+          {mobileMenuOpen ? (
+            <X className="w-6 h-6" />
+          ) : (
+            <Menu className="w-6 h-6" />
+          )}
+        </button>
+
+        {/* Mobile Overlay */}
+        {mobileMenuOpen && (
+          <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={() => setMobileMenuOpen(false)} />
+        )}
+
+        {/* Mobile Sidebar */}
+        <div
+          id="mobile-sidebar"
+          className={`fixed top-0 left-0 h-full w-80 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 z-50 transform transition-transform duration-300 ease-in-out md:hidden ${
+            mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}
+        >
+          {/* Mobile Header */}
+          <div className="p-6 border-b border-gray-200 dark:border-gray-800">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-8 h-8 bg-theme-primary rounded-lg flex items-center justify-center">
+                  <Database className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-xl font-bold text-gray-900 dark:text-white">SkyLogistics</h1>
+                  <span className="text-gray-500 dark:text-gray-400 text-sm">Dashboard Mobile</span>
+                </div>
+              </div>
+              <button
+                onClick={() => setMobileMenuOpen(false)}
+                className="w-8 h-8 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            
+            {/* Mobile Theme Toggle */}
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-600 dark:text-gray-400">Thème</span>
+              <ThemeToggle />
+            </div>
+          </div>
+
+          {/* Mobile Navigation */}
+          <nav className="flex-1 p-4 overflow-y-auto">
+            <ul className="space-y-2">
+              {menuItems.map((item) => {
+                const Icon = item.icon
+                const isActive = activeTab === item.id
+                
+                return (
+                  <li key={item.id}>
+                    <button
+                      onClick={() => handleMenuItemClick(item.id)}
+                      className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 ${
+                        isActive
+                          ? 'bg-theme-primary text-white shadow-lg'
+                          : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white'
+                      }`}
+                    >
+                      <Icon className={`w-5 h-5 flex-shrink-0 ${
+                        item.id === 'flights' && !isActive ? 'text-blue-500' : 
+                        item.id === 'cass' && !isActive ? 'text-orange-500' :
+                        item.id === 'stock' && !isActive ? 'text-green-500' :
+                        item.id === 'roadmap' && !isActive ? 'text-purple-500' : ''
+                      }`} />
+                      <span className="font-medium">{item.label}</span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          </nav>
+
+          {/* Mobile User Profile */}
+          <div className="p-4 border-t border-gray-200 dark:border-gray-800">
+            <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
+              <div className="flex items-center space-x-3">
+                <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                  <span className="text-white text-sm font-medium">A</span>
+                </div>
+                <div>
+                  <p className="text-gray-900 dark:text-white text-sm font-medium">Admin</p>
+                  <p className="text-gray-500 dark:text-gray-400 text-xs">En ligne</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </>
+    )
+  }
+
+  // Desktop Sidebar (existing code with responsive improvements)
   return (
-    <div className={`${isCollapsed ? 'w-16' : 'w-64'} bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col transition-all duration-300 ease-in-out relative`}>
+    <div className={`${isCollapsed ? 'w-16' : 'w-64'} bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col transition-all duration-300 ease-in-out relative hidden md:flex`}>
       {/* Collapse/Expand Button */}
       <button
         onClick={() => setIsCollapsed(!isCollapsed)}
@@ -66,7 +219,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, isCollapsed,
       </div>
       
       {/* Navigation */}
-      <nav className={`flex-1 ${isCollapsed ? 'p-2' : 'p-4'}`}>
+      <nav className={`flex-1 ${isCollapsed ? 'p-2' : 'p-4'} overflow-y-auto`}>
         <ul className="space-y-2">
           {menuItems.map((item) => {
             const Icon = item.icon
@@ -85,7 +238,9 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, isCollapsed,
                 >
                   <Icon className={`w-5 h-5 flex-shrink-0 ${
                     item.id === 'flights' && !isActive ? 'text-blue-500' : 
-                    item.id === 'cass' && !isActive ? 'text-orange-500' : ''
+                    item.id === 'cass' && !isActive ? 'text-orange-500' :
+                    item.id === 'stock' && !isActive ? 'text-green-500' :
+                    item.id === 'roadmap' && !isActive ? 'text-purple-500' : ''
                   }`} />
                   {!isCollapsed && (
                     <span className="font-medium whitespace-nowrap overflow-hidden">{item.label}</span>
