@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Package, CheckCircle, XCircle, AlertTriangle, RefreshCw, Plus, Calculator, Hash, List, FileText, X } from 'lucide-react'
-import { getAirlineByPrefix, insertAWBStock } from '../lib/supabase'
+import { getAirlineByPrefix, insertAWBStock, checkAWBExists, getAvailablePrefixes } from '../lib/supabase'
 
 interface AWBSeriesData {
   prefix: string
@@ -20,6 +20,7 @@ interface AWBValidationResult {
   checkDigit: number
   calculatedCheckDigit: number
   errors: string[]
+  alreadyExists?: boolean
 }
 
 const AWBValidation: React.FC = () => {
@@ -39,6 +40,9 @@ const AWBValidation: React.FC = () => {
   const [addingStock, setAddingStock] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+
+  // Get available prefixes
+  const availablePrefixes = getAvailablePrefixes()
 
   // Look up airline when prefix changes
   useEffect(() => {
@@ -69,7 +73,7 @@ const AWBValidation: React.FC = () => {
   }, [awbSeriesData.prefix])
 
   // AWB Check Digit Validation
-  const validateAWBCheckDigit = (awbNumber: string): AWBValidationResult => {
+  const validateAWBCheckDigit = async (awbNumber: string): Promise<AWBValidationResult> => {
     const errors: string[] = []
     
     // Remove any spaces or dashes
@@ -103,6 +107,19 @@ const AWBValidation: React.FC = () => {
       errors.push(`Check digit incorrect. Calculé: ${calculatedCheckDigit}, Fourni: ${checkDigit}`)
     }
 
+    // Check if AWB already exists in database
+    let alreadyExists = false
+    if (errors.length === 0) {
+      try {
+        alreadyExists = await checkAWBExists(prefix, cleanAWB)
+        if (alreadyExists) {
+          errors.push('Ce numéro AWB existe déjà dans le stock')
+        }
+      } catch (err) {
+        console.error('Error checking AWB existence:', err)
+      }
+    }
+
     return {
       isValid: errors.length === 0,
       awbNumber: cleanAWB,
@@ -110,7 +127,8 @@ const AWBValidation: React.FC = () => {
       serialNumber,
       checkDigit,
       calculatedCheckDigit,
-      errors
+      errors,
+      alreadyExists
     }
   }
 
@@ -127,6 +145,11 @@ const AWBValidation: React.FC = () => {
     
     if (!prefix || prefix.length !== 3) {
       throw new Error('Le préfixe doit contenir exactement 3 chiffres')
+    }
+
+    // Check if prefix is supported
+    if (!availablePrefixes.includes(prefix)) {
+      throw new Error(`Préfixe ${prefix} non supporté. Préfixes disponibles: ${availablePrefixes.join(', ')}`)
     }
 
     let awbNumbers: string[] = []
@@ -193,7 +216,7 @@ const AWBValidation: React.FC = () => {
       const results: AWBValidationResult[] = []
 
       for (const awb of awbNumbers) {
-        const validation = validateAWBCheckDigit(awb)
+        const validation = await validateAWBCheckDigit(awb)
         results.push(validation)
       }
 
@@ -237,30 +260,26 @@ const AWBValidation: React.FC = () => {
     try {
       let successCount = 0
       let errorCount = 0
+      let duplicateCount = 0
 
       for (const result of validationResults) {
         try {
-          await insertAWBStock({
-            awb_number: result.awbNumber,
-            prefix: result.prefix,
-            serial_number: result.serialNumber,
-            check_digit: result.checkDigit,
-            airline_code: awbSeriesData.airlineCode,
-            airline_name: awbSeriesData.airlineName,
-            status: 'active',
-            created_at: new Date().toISOString()
-          })
+          await insertAWBStock(result.prefix, result.awbNumber, result.serialNumber, result.checkDigit)
           successCount++
         } catch (err) {
           console.error('Error adding AWB:', result.awbNumber, err)
-          errorCount++
+          if (err instanceof Error && err.message.includes('duplicate')) {
+            duplicateCount++
+          } else {
+            errorCount++
+          }
         }
       }
 
       if (successCount > 0) {
         setSuccess(`${successCount} AWB ajoutés avec succès au stock!`)
         
-        if (errorCount === 0) {
+        if (errorCount === 0 && duplicateCount === 0) {
           // Reset form on complete success
           setAwbSeriesData({
             prefix: '',
@@ -277,8 +296,11 @@ const AWBValidation: React.FC = () => {
         }
       }
 
-      if (errorCount > 0) {
-        setError(`${successCount} AWB ajoutés avec succès, ${errorCount} erreurs`)
+      if (errorCount > 0 || duplicateCount > 0) {
+        let errorMsg = `${successCount} AWB ajoutés avec succès`
+        if (duplicateCount > 0) errorMsg += `, ${duplicateCount} doublons ignorés`
+        if (errorCount > 0) errorMsg += `, ${errorCount} erreurs`
+        setError(errorMsg)
       }
 
     } catch (err) {
@@ -333,20 +355,26 @@ const AWBValidation: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Airline prefix
             </label>
-            <input
-              type="text"
-              value={awbSeriesData.prefix}
-              onChange={(e) => {
-                const value = e.target.value.replace(/\D/g, '').slice(0, 3)
-                setAwbSeriesData(prev => ({ ...prev, prefix: value }))
-              }}
-              placeholder="147"
-              maxLength={3}
-              className="w-48 px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500"
-            />
-            {awbSeriesData.airlineName && (
-              <p className="mt-1 text-sm text-green-600 dark:text-green-400">
-                ✓ {awbSeriesData.airlineName} ({awbSeriesData.airlineCode})
+            <div className="flex items-center space-x-4">
+              <select
+                value={awbSeriesData.prefix}
+                onChange={(e) => setAwbSeriesData(prev => ({ ...prev, prefix: e.target.value }))}
+                className="w-48 px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500"
+              >
+                <option value="">Sélectionner un préfixe</option>
+                {availablePrefixes.map(prefix => (
+                  <option key={prefix} value={prefix}>{prefix}</option>
+                ))}
+              </select>
+              {awbSeriesData.airlineName && (
+                <p className="text-sm text-green-600 dark:text-green-400">
+                  ✓ {awbSeriesData.airlineName} ({awbSeriesData.airlineCode})
+                </p>
+              )}
+            </div>
+            {availablePrefixes.length > 0 && (
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Préfixes disponibles: {availablePrefixes.join(', ')}
               </p>
             )}
           </div>
@@ -503,11 +531,11 @@ const AWBValidation: React.FC = () => {
                           setManualInput(e.target.value)
                           parseManualInput(e.target.value)
                         }}
-                        placeholder="14712345675&#10;14712345682&#10;14712345699"
+                        placeholder="12412345675&#10;12412345682&#10;12412345699"
                         className="w-full h-16 bg-transparent border-none outline-none resize-none text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 font-mono text-sm"
                       />
                       <p className="text-xs text-blue-600 dark:text-blue-400 mt-2">
-                        enter one serial number per line
+                        enter one complete AWB number per line (11 digits)
                       </p>
                     </div>
                   </div>
@@ -602,7 +630,7 @@ const AWBValidation: React.FC = () => {
                     ) : (
                       <Plus className="w-4 h-4" />
                     )}
-                    <span>Add to Stock ({validationResults.filter(r => r.isValid).length} AWB)</span>
+                    <span>+ Add to Stock ({validationResults.filter(r => r.isValid).length} AWB)</span>
                   </button>
                 </div>
               )}
@@ -617,11 +645,14 @@ const AWBValidation: React.FC = () => {
           AWB Format Information
         </h3>
         <div className="space-y-2 text-sm text-blue-800 dark:text-blue-200">
-          <p>• <strong>Structure:</strong> 11 digits total (e.g., 12312345675)</p>
-          <p>• <strong>Prefix:</strong> First 3 digits (123) - Airline code</p>
+          <p>• <strong>Structure:</strong> 11 digits total (e.g., 12412345675)</p>
+          <p>• <strong>Prefix:</strong> First 3 digits (124) - Airline code</p>
           <p>• <strong>Serial number:</strong> Next 7 digits (1234567) - Sequential numbering</p>
           <p>• <strong>Check digit:</strong> Last digit (5) - Remainder of serial number ÷ 7</p>
           <p>• <strong>Calculation:</strong> 1234567 ÷ 7 = 176366 remainder 5</p>
+          <p>• <strong>Storage format:</strong> Prefix in 'prefix' column, Serial+CheckDigit in 'awb' column</p>
+          <p>• <strong>Available prefixes:</strong> {availablePrefixes.join(', ')}</p>
+          <p>• <strong>Tables:</strong> awbStock124, awbStock235, awbStock624</p>
         </div>
       </div>
     </div>
