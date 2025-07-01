@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Palette, Monitor, Sun, Moon, Sparkles, Leaf, Zap, Heart, Crown, Waves, Mountain, Coffee } from 'lucide-react'
+import { Palette, Monitor, Sun, Moon, Sparkles, Leaf, Zap, Heart, Crown, Waves, Mountain, Coffee, Gamepad2 } from 'lucide-react'
 import { useTheme } from '../contexts/ThemeContext'
 
 interface Theme {
@@ -81,10 +81,10 @@ const Settings: React.FC = () => {
       }
     },
     {
-      id: 'sunset',
-      name: 'Coucher de soleil',
-      description: 'Chaleur et énergie des fins de journée',
-      icon: Sun,
+      id: 'retro-arcade',
+      name: 'Retro Arcade',
+      description: 'Nostalgie gaming des années 80-90',
+      icon: Gamepad2,
       colors: {
         primary: '#F59E0B',
         secondary: '#DC2626',
@@ -94,14 +94,14 @@ const Settings: React.FC = () => {
         text: '#92400E'
       },
       preview: {
-        gradient: 'from-orange-500 to-red-500',
+        gradient: 'from-orange-500 via-red-500 to-pink-500',
         shadow: 'shadow-orange-200'
       }
     },
     {
       id: 'purple',
       name: 'Mystique',
-      description: 'Élégance et sophistication',
+      description: 'Élégance et sophistication violette',
       icon: Sparkles,
       colors: {
         primary: '#8B5CF6',
@@ -119,7 +119,7 @@ const Settings: React.FC = () => {
     {
       id: 'royal',
       name: 'Royal',
-      description: 'Luxe et prestige',
+      description: 'Luxe et prestige doré',
       icon: Crown,
       colors: {
         primary: '#1E40AF',
@@ -137,7 +137,7 @@ const Settings: React.FC = () => {
     {
       id: 'mountain',
       name: 'Montagne',
-      description: 'Force et stabilité',
+      description: 'Force et stabilité minérale',
       icon: Mountain,
       colors: {
         primary: '#374151',
@@ -155,7 +155,7 @@ const Settings: React.FC = () => {
     {
       id: 'coffee',
       name: 'Café',
-      description: 'Chaleur et confort',
+      description: 'Chaleur et confort automnal',
       icon: Coffee,
       colors: {
         primary: '#92400E',
@@ -173,7 +173,7 @@ const Settings: React.FC = () => {
     {
       id: 'electric',
       name: 'Électrique',
-      description: 'Énergie et modernité',
+      description: 'Énergie et modernité cyan',
       icon: Zap,
       colors: {
         primary: '#06B6D4',
@@ -191,7 +191,7 @@ const Settings: React.FC = () => {
     {
       id: 'romantic',
       name: 'Romantique',
-      description: 'Douceur et élégance',
+      description: 'Douceur et élégance rose',
       icon: Heart,
       colors: {
         primary: '#EC4899',
@@ -217,15 +217,35 @@ const Settings: React.FC = () => {
       document.documentElement.style.removeProperty('--color-primary')
       document.documentElement.style.removeProperty('--color-secondary')
       document.documentElement.style.removeProperty('--color-accent')
+      
+      // Supprimer les classes de thème personnalisé
+      document.documentElement.classList.remove('theme-ocean', 'theme-forest', 'theme-retro-arcade', 'theme-purple', 'theme-royal', 'theme-mountain', 'theme-coffee', 'theme-electric', 'theme-romantic')
       return
     }
 
     const selectedThemeData = themes.find(t => t.id === themeId)
     if (selectedThemeData) {
+      // Supprimer toutes les classes de thème existantes
+      document.documentElement.classList.remove('theme-ocean', 'theme-forest', 'theme-retro-arcade', 'theme-purple', 'theme-royal', 'theme-mountain', 'theme-coffee', 'theme-electric', 'theme-romantic')
+      
+      // Ajouter la nouvelle classe de thème
+      document.documentElement.classList.add(`theme-${themeId}`)
+      
       // Appliquer les variables CSS personnalisées
       document.documentElement.style.setProperty('--color-primary', selectedThemeData.colors.primary)
       document.documentElement.style.setProperty('--color-secondary', selectedThemeData.colors.secondary)
       document.documentElement.style.setProperty('--color-accent', selectedThemeData.colors.accent)
+      
+      // Appliquer immédiatement aux éléments qui utilisent les classes de thème
+      const elementsToUpdate = document.querySelectorAll('.bg-blue-600, .text-blue-600, .border-blue-600, .hover\\:bg-blue-700')
+      elementsToUpdate.forEach(element => {
+        // Forcer un repaint en modifiant temporairement une propriété
+        const el = element as HTMLElement
+        const originalDisplay = el.style.display
+        el.style.display = 'none'
+        el.offsetHeight // Trigger reflow
+        el.style.display = originalDisplay
+      })
     }
   }
 
@@ -241,7 +261,7 @@ const Settings: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gray-600 rounded-lg flex items-center justify-center">
+          <div className="w-10 h-10 bg-theme-primary rounded-lg flex items-center justify-center">
             <Palette className="w-6 h-6 text-white" />
           </div>
           <div>
@@ -254,7 +274,7 @@ const Settings: React.FC = () => {
       {/* Theme Selection */}
       <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
         <div className="flex items-center space-x-3 mb-6">
-          <Palette className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+          <Palette className="w-6 h-6 text-theme-primary" />
           <div>
             <h3 className="text-xl font-semibold text-gray-900 dark:text-white">Thèmes visuels</h3>
             <p className="text-gray-600 dark:text-gray-400">Choisissez un thème qui correspond à votre style</p>
@@ -282,7 +302,7 @@ const Settings: React.FC = () => {
             </div>
             <button
               onClick={toggleTheme}
-              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+              className="flex items-center space-x-2 px-4 py-2 bg-theme-primary hover:opacity-90 text-white rounded-lg transition-all"
             >
               {theme === 'light' ? (
                 <Moon className="w-4 h-4" />
@@ -304,47 +324,49 @@ const Settings: React.FC = () => {
               <button
                 key={themeOption.id}
                 onClick={() => applyTheme(themeOption.id)}
-                className={`group relative p-4 rounded-xl border-2 transition-all duration-300 hover:scale-105 ${
+                className={`group relative p-4 rounded-xl border-2 transition-all duration-300 hover:scale-105 min-h-[140px] flex flex-col ${
                   isSelected
                     ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-lg'
                     : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800'
                 }`}
               >
                 {/* Preview Gradient */}
-                <div className={`w-full h-16 rounded-lg bg-gradient-to-r ${themeOption.preview.gradient} mb-3 ${themeOption.preview.shadow} group-hover:shadow-lg transition-shadow duration-300`}>
+                <div className={`w-full h-16 rounded-lg bg-gradient-to-r ${themeOption.preview.gradient} mb-3 ${themeOption.preview.shadow} group-hover:shadow-lg transition-shadow duration-300 flex-shrink-0`}>
                   <div className="w-full h-full rounded-lg bg-white/20 dark:bg-black/20 flex items-center justify-center">
                     <Icon className="w-6 h-6 text-white drop-shadow-sm" />
                   </div>
                 </div>
 
                 {/* Theme Info */}
-                <div className="text-left">
-                  <h4 className={`font-semibold mb-1 ${
-                    isSelected 
-                      ? 'text-blue-700 dark:text-blue-300' 
-                      : 'text-gray-900 dark:text-white'
-                  }`}>
-                    {themeOption.name}
-                  </h4>
-                  <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
-                    {themeOption.description}
-                  </p>
-                </div>
+                <div className="text-left flex-grow flex flex-col justify-between">
+                  <div>
+                    <h4 className={`font-semibold mb-1 text-sm ${
+                      isSelected 
+                        ? 'text-blue-700 dark:text-blue-300' 
+                        : 'text-gray-900 dark:text-white'
+                    }`}>
+                      {themeOption.name}
+                    </h4>
+                    <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed line-clamp-2">
+                      {themeOption.description}
+                    </p>
+                  </div>
 
-                {/* Color Palette Preview */}
-                <div className="flex space-x-1 mt-3">
-                  <div 
-                    className="w-3 h-3 rounded-full border border-white/50"
-                    style={{ backgroundColor: themeOption.colors.primary }}
-                  />
-                  <div 
-                    className="w-3 h-3 rounded-full border border-white/50"
-                    style={{ backgroundColor: themeOption.colors.secondary }}
-                  />
-                  <div 
-                    className="w-3 h-3 rounded-full border border-white/50"
-                    style={{ backgroundColor: themeOption.colors.accent }}
-                  />
+                  {/* Color Palette Preview */}
+                  <div className="flex space-x-1 mt-3">
+                    <div 
+                      className="w-3 h-3 rounded-full border border-white/50"
+                      style={{ backgroundColor: themeOption.colors.primary }}
+                    />
+                    <div 
+                      className="w-3 h-3 rounded-full border border-white/50"
+                      style={{ backgroundColor: themeOption.colors.secondary }}
+                    />
+                    <div 
+                      className="w-3 h-3 rounded-full border border-white/50"
+                      style={{ backgroundColor: themeOption.colors.accent }}
+                    />
+                  </div>
                 </div>
 
                 {/* Selected Indicator */}
@@ -388,7 +410,7 @@ const Settings: React.FC = () => {
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input type="checkbox" className="sr-only peer" defaultChecked />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-theme-primary"></div>
               </label>
             </div>
             
@@ -399,7 +421,7 @@ const Settings: React.FC = () => {
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input type="checkbox" className="sr-only peer" defaultChecked />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-theme-primary"></div>
               </label>
             </div>
           </div>
@@ -413,7 +435,7 @@ const Settings: React.FC = () => {
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Animations
               </label>
-              <select className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <select className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-theme-primary">
                 <option value="all">Toutes les animations</option>
                 <option value="reduced">Animations réduites</option>
                 <option value="none">Aucune animation</option>
@@ -424,7 +446,7 @@ const Settings: React.FC = () => {
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Qualité des graphiques
               </label>
-              <select className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <select className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-theme-primary">
                 <option value="high">Haute qualité</option>
                 <option value="medium">Qualité moyenne</option>
                 <option value="low">Qualité réduite</option>
