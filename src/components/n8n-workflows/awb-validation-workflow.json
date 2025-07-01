@@ -1,0 +1,182 @@
+{
+  "name": "AWB Validation Workflow",
+  "description": "Validates AWB numbers according to airline industry standards",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "awb-validation",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-awb-validation",
+      "name": "AWB Validation Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "awb-validation"
+    },
+    {
+      "parameters": {
+        "functionCode": "// AWB Validation Logic\nconst awbData = items[0].json;\n\n// Extract AWB components\nconst awbNumber = awbData.awbNumber;\nconst prefix = awbData.prefix;\nconst serialNumber = awbData.serialNumber;\nconst checkDigit = awbData.checkDigit;\n\n// Validation results\nlet errors = [];\nlet warnings = [];\nlet isValid = true;\n\n// 1. Format validation (already done in frontend)\nconsole.log('Validating AWB:', awbNumber);\n\n// 2. Check for duplicate AWB\n// This would typically query your database\n// For now, we'll simulate this check\nconst isDuplicate = false; // Replace with actual database check\nif (isDuplicate) {\n  errors.push('Ce numéro AWB existe déjà dans la base de données');\n  isValid = false;\n}\n\n// 3. Validate airline prefix\nconst validPrefixes = {\n  '020': { name: 'Lufthansa', code: 'LH' },\n  '057': { name: 'Air France', code: 'AF' },\n  '074': { name: 'KLM', code: 'KL' },\n  '125': { name: 'British Airways', code: 'BA' },\n  '147': { name: 'Air Algérie', code: 'AH' },\n  '205': { name: 'Emirates', code: 'EK' },\n  '235': { name: 'Turkish Airlines', code: 'TK' },\n  '618': { name: 'Qatar Airways', code: 'QR' },\n  '724': { name: 'Tunisair', code: 'TU' }\n};\n\nconst airlineInfo = validPrefixes[prefix];\nif (!airlineInfo) {\n  warnings.push(`Préfixe ${prefix} non reconnu dans la base de données IATA`);\n}\n\n// 4. Validate serial number sequence\n// Check if this is the next expected number for this airline\nconst lastSerialForPrefix = '1234566'; // Replace with actual database query\nconst expectedNext = (parseInt(lastSerialForPrefix) + 1).toString().padStart(7, '0');\nif (serialNumber !== expectedNext) {\n  warnings.push(`Numéro de série non séquentiel. Attendu: ${expectedNext}, Reçu: ${serialNumber}`);\n}\n\n// 5. Business rules validation\n// Check if airline is active\nconst isAirlineActive = true; // Replace with actual check\nif (!isAirlineActive) {\n  errors.push('Cette compagnie aérienne n\\'est pas active');\n  isValid = false;\n}\n\n// 6. Additional validations\n// Check date constraints (AWB not too old or future)\nconst currentDate = new Date();\nconst awbDate = new Date(); // Extract from AWB if available\n// Add date validation logic here\n\n// Prepare response\nconst validationResult = {\n  isValid: isValid && errors.length === 0,\n  awbNumber,\n  prefix,\n  serialNumber,\n  checkDigit,\n  airlineName: airlineInfo?.name || awbData.airlineName,\n  airlineCode: airlineInfo?.code || awbData.airlineCode,\n  errors,\n  warnings,\n  timestamp: new Date().toISOString(),\n  validatedBy: 'n8n-workflow'\n};\n\nconsole.log('Validation result:', validationResult);\n\nreturn [{\n  json: validationResult\n}];"
+      },
+      "id": "awb-validation-logic",
+      "name": "AWB Validation Logic",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.isValid}}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "check-validation-result",
+      "name": "Check Validation Result",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "AWBstocks",
+        "columns": "awb_number, airline_code, airline_name, prefix, serial_number, check_digit, status, created_at",
+        "additionalFields": {
+          "returnFields": "*"
+        }
+      },
+      "id": "insert-valid-awb",
+      "name": "Insert Valid AWB",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [900, 200],
+      "credentials": {
+        "supabaseApi": {
+          "id": "your-supabase-credentials-id",
+          "name": "Supabase SkyLogistics"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Log invalid AWB for audit\nconst awbData = items[0].json;\n\nconsole.log('Invalid AWB detected:', {\n  awbNumber: awbData.awbNumber,\n  errors: awbData.errors,\n  timestamp: new Date().toISOString()\n});\n\n// Could also insert into an audit/error log table\n// or send notification to admin\n\nreturn items;"
+      },
+      "id": "log-invalid-awb",
+      "name": "Log Invalid AWB",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json}}"
+      },
+      "id": "response-node",
+      "name": "Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Send notification for successful AWB addition\nconst awbData = items[0].json;\n\nconst notification = {\n  type: 'awb_added',\n  message: `Nouveau AWB ajouté: ${awbData.awb_number} (${awbData.airline_name})`,\n  awbNumber: awbData.awb_number,\n  airlineName: awbData.airline_name,\n  timestamp: new Date().toISOString()\n};\n\nconsole.log('AWB added successfully:', notification);\n\n// Could send email, Slack notification, etc.\n\nreturn [{ json: notification }];"
+      },
+      "id": "success-notification",
+      "name": "Success Notification",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1120, 200]
+    }
+  ],
+  "connections": {
+    "AWB Validation Webhook": {
+      "main": [
+        [
+          {
+            "node": "AWB Validation Logic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AWB Validation Logic": {
+      "main": [
+        [
+          {
+            "node": "Check Validation Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Validation Result": {
+      "main": [
+        [
+          {
+            "node": "Insert Valid AWB",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Invalid AWB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Valid AWB": {
+      "main": [
+        [
+          {
+            "node": "Success Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Invalid AWB": {
+      "main": [
+        [
+          {
+            "node": "Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Success Notification": {
+      "main": [
+        [
+          {
+            "node": "Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": ["awb", "validation", "logistics"],
+  "triggerCount": 1,
+  "updatedAt": "2025-01-01T12:00:00.000Z",
+  "versionId": "1"
+}

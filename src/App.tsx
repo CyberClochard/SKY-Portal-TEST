@@ -5,9 +5,9 @@ import Dashboard from './components/Dashboard'
 import DataTable from './components/DataTable'
 import FlightSearch from './components/FlightSearch'
 import CassFileProcessor from './components/CassFileProcessor'
+import AWBValidation from './components/AWBValidation'
 import Roadmap from './components/Roadmap'
 import Settings from './components/Settings'
-import { StockDashboard } from './components/stock'
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
@@ -26,8 +26,8 @@ function App() {
         return <FlightSearch n8nBaseUrl={n8nBaseUrl} />
       case 'cass':
         return <CassFileProcessor n8nBaseUrl={n8nBaseUrl} />
-      case 'stock':
-        return <StockDashboard />
+      case 'awb-validation':
+        return <AWBValidation />
       case 'roadmap':
         return <Roadmap />
       case 'settings':

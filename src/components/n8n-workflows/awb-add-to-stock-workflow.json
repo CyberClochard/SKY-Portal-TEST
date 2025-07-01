@@ -1,0 +1,270 @@
+{
+  "name": "AWB Add to Stock Workflow",
+  "description": "Adds validated AWB to stock database with proper sequencing",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "awb-add-to-stock",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-add-to-stock",
+      "name": "Add to Stock Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "awb-add-to-stock"
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "table": "AWBstocks",
+        "filterType": "manual",
+        "matchAny": false,
+        "conditions": {
+          "conditions": [
+            {
+              "column": "awb_number",
+              "condition": "equals",
+              "value": "={{$json.awbNumber}}"
+            }
+          ]
+        }
+      },
+      "id": "check-duplicate",
+      "name": "Check for Duplicate",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": {
+        "supabaseApi": {
+          "id": "your-supabase-credentials-id",
+          "name": "Supabase SkyLogistics"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json.length}}",
+              "operation": "equal",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "check-if-unique",
+      "name": "Check if Unique",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "table": "AWBstocks",
+        "filterType": "manual",
+        "matchAny": false,
+        "conditions": {
+          "conditions": [
+            {
+              "column": "prefix",
+              "condition": "equals",
+              "value": "={{$('webhook-add-to-stock').item.json.prefix}}"
+            }
+          ]
+        },
+        "sort": {
+          "values": [
+            {
+              "column": "serial_number",
+              "direction": "DESC"
+            }
+          ]
+        },
+        "limit": 1
+      },
+      "id": "get-last-serial",
+      "name": "Get Last Serial for Prefix",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [900, 200],
+      "credentials": {
+        "supabaseApi": {
+          "id": "your-supabase-credentials-id",
+          "name": "Supabase SkyLogistics"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Validate serial number sequence\nconst webhookData = $('webhook-add-to-stock').item.json;\nconst lastSerialData = items[0]?.json;\n\nlet isSequenceValid = true;\nlet warnings = [];\n\nif (lastSerialData) {\n  const lastSerial = parseInt(lastSerialData.serial_number);\n  const currentSerial = parseInt(webhookData.serialNumber);\n  const expectedNext = lastSerial + 1;\n  \n  if (currentSerial !== expectedNext) {\n    warnings.push(`Numéro de série non séquentiel. Dernier: ${lastSerial}, Attendu: ${expectedNext}, Reçu: ${currentSerial}`);\n    // Still allow but with warning\n  }\n}\n\n// Prepare data for insertion\nconst insertData = {\n  awb_number: webhookData.awbNumber,\n  prefix: webhookData.prefix,\n  serial_number: webhookData.serialNumber,\n  check_digit: webhookData.checkDigit,\n  airline_code: webhookData.airlineCode,\n  airline_name: webhookData.airlineName,\n  description: webhookData.description,\n  status: 'active',\n  created_at: new Date().toISOString(),\n  warnings: warnings.length > 0 ? warnings.join('; ') : null\n};\n\nconsole.log('Preparing to insert AWB:', insertData);\n\nreturn [{ json: insertData }];"
+      },
+      "id": "prepare-insert-data",
+      "name": "Prepare Insert Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "AWBstocks",
+        "columns": "awb_number, prefix, serial_number, check_digit, airline_code, airline_name, description, status, created_at, warnings",
+        "additionalFields": {
+          "returnFields": "*"
+        }
+      },
+      "id": "insert-awb-stock",
+      "name": "Insert AWB to Stock",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1340, 200],
+      "credentials": {
+        "supabaseApi": {
+          "id": "your-supabase-credentials-id",
+          "name": "Supabase SkyLogistics"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Log successful addition\nconst insertedData = items[0].json;\n\nconst logEntry = {\n  action: 'awb_added',\n  awb_number: insertedData.awb_number,\n  airline_name: insertedData.airline_name,\n  prefix: insertedData.prefix,\n  serial_number: insertedData.serial_number,\n  timestamp: new Date().toISOString(),\n  success: true\n};\n\nconsole.log('AWB successfully added to stock:', logEntry);\n\n// Prepare success response\nconst response = {\n  success: true,\n  message: 'AWB ajouté avec succès au stock',\n  data: insertedData,\n  awbNumber: insertedData.awb_number,\n  id: insertedData.id\n};\n\nreturn [{ json: response }];"
+      },
+      "id": "success-response",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1560, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Handle duplicate AWB error\nconst webhookData = $('webhook-add-to-stock').item.json;\nconst duplicateData = items[0]?.json;\n\nconst errorResponse = {\n  success: false,\n  error: 'duplicate_awb',\n  message: `Le numéro AWB ${webhookData.awbNumber} existe déjà dans la base de données`,\n  existingRecord: duplicateData,\n  timestamp: new Date().toISOString()\n};\n\nconsole.log('Duplicate AWB detected:', errorResponse);\n\nreturn [{ json: errorResponse }];"
+      },
+      "id": "duplicate-error",
+      "name": "Duplicate Error Response",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json}}"
+      },
+      "id": "response-webhook",
+      "name": "Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1780, 300]
+    }
+  ],
+  "connections": {
+    "Add to Stock Webhook": {
+      "main": [
+        [
+          {
+            "node": "Check for Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check for Duplicate": {
+      "main": [
+        [
+          {
+            "node": "Check if Unique",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check if Unique": {
+      "main": [
+        [
+          {
+            "node": "Get Last Serial for Prefix",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Duplicate Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Last Serial for Prefix": {
+      "main": [
+        [
+          {
+            "node": "Prepare Insert Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Insert Data": {
+      "main": [
+        [
+          {
+            "node": "Insert AWB to Stock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert AWB to Stock": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Success Response": {
+      "main": [
+        [
+          {
+            "node": "Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Duplicate Error Response": {
+      "main": [
+        [
+          {
+            "node": "Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": ["awb", "stock", "logistics"],
+  "triggerCount": 1,
+  "updatedAt": "2025-01-01T12:00:00.000Z",
+  "versionId": "1"
+}
