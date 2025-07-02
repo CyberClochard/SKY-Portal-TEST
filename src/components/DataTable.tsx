@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Search, Filter, Download, RefreshCw, Eye, Edit, Trash2, Plus, ChevronLeft, ChevronRight, FileText, AlertCircle } from 'lucide-react'
+import { Search, Filter, Download, RefreshCw, Eye, Edit, Trash2, Plus, ChevronLeft, ChevronRight, FileText, AlertCircle, Save, X, Check, Settings, Columns } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import CasePage from './CasePage'
 
@@ -13,13 +13,18 @@ const DataTable: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
-  const [sortField, setSortField] = useState<string>('DATE')
+  const [sortField, setSortField] = useState<string>('DOSSIER')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   const [currentPage, setCurrentPage] = useState(1)
-  const [itemsPerPage] = useState(10)
+  const [itemsPerPage, setItemsPerPage] = useState(10)
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
   const [showCasePage, setShowCasePage] = useState<string | null>(null)
   const [tableColumns, setTableColumns] = useState<string[]>([])
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set())
+  const [showColumnSelector, setShowColumnSelector] = useState(false)
+  const [editingRow, setEditingRow] = useState<string | null>(null)
+  const [editingData, setEditingData] = useState<MasterRecord>({})
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
 
   // Load data from Supabase MASTER table
   useEffect(() => {
@@ -36,7 +41,7 @@ const DataTable: React.FC = () => {
       const { data: masterData, error: masterError } = await supabase
         .from('MASTER')
         .select('*')
-        .order('DATE', { ascending: false })
+        .order('DOSSIER', { ascending: false })
 
       if (masterError) {
         console.error('Error loading MASTER data:', masterError)
@@ -50,6 +55,9 @@ const DataTable: React.FC = () => {
         // Get column names from the first record
         const columns = Object.keys(masterData[0]).filter(key => key !== 'id')
         setTableColumns(columns)
+        
+        // Set all columns as visible by default
+        setVisibleColumns(new Set(columns))
         
         setData(masterData)
         setFilteredData(masterData)
@@ -133,10 +141,81 @@ const DataTable: React.FC = () => {
     setShowCasePage(null)
   }
 
-  const exportToCSV = () => {
-    if (tableColumns.length === 0) return
+  const handleEditRow = (record: MasterRecord) => {
+    const recordId = record.id || record.DOSSIER
+    setEditingRow(recordId)
+    setEditingData({ ...record })
+  }
 
-    const headers = tableColumns
+  const handleSaveEdit = async () => {
+    if (!editingRow || !editingData) return
+
+    try {
+      const { error } = await supabase
+        .from('MASTER')
+        .update(editingData)
+        .eq('DOSSIER', editingData.DOSSIER)
+
+      if (error) {
+        setError(`Erreur lors de la sauvegarde: ${error.message}`)
+        return
+      }
+
+      // Update local data
+      setData(prevData => 
+        prevData.map(record => 
+          (record.id || record.DOSSIER) === editingRow ? editingData : record
+        )
+      )
+
+      setEditingRow(null)
+      setEditingData({})
+    } catch (err) {
+      setError('Erreur lors de la sauvegarde')
+    }
+  }
+
+  const handleCancelEdit = () => {
+    setEditingRow(null)
+    setEditingData({})
+  }
+
+  const handleDeleteRow = async (dossier: string) => {
+    try {
+      const { error } = await supabase
+        .from('MASTER')
+        .delete()
+        .eq('DOSSIER', dossier)
+
+      if (error) {
+        setError(`Erreur lors de la suppression: ${error.message}`)
+        return
+      }
+
+      // Update local data
+      setData(prevData => prevData.filter(record => record.DOSSIER !== dossier))
+      setShowDeleteConfirm(null)
+      setEditingRow(null)
+    } catch (err) {
+      setError('Erreur lors de la suppression')
+    }
+  }
+
+  const handleColumnToggle = (column: string) => {
+    const newVisible = new Set(visibleColumns)
+    if (newVisible.has(column)) {
+      newVisible.delete(column)
+    } else {
+      newVisible.add(column)
+    }
+    setVisibleColumns(newVisible)
+  }
+
+  const exportToCSV = () => {
+    const visibleColumnsArray = Array.from(visibleColumns)
+    if (visibleColumnsArray.length === 0) return
+
+    const headers = visibleColumnsArray
     const csvContent = [
       headers.join(','),
       ...filteredData.map(record => 
@@ -179,11 +258,21 @@ const DataTable: React.FC = () => {
     return value.toString()
   }
 
+  const handleEditFieldChange = (field: string, value: any) => {
+    setEditingData(prev => ({
+      ...prev,
+      [field]: value
+    }))
+  }
+
   // Pagination
   const totalPages = Math.ceil(filteredData.length / itemsPerPage)
   const startIndex = (currentPage - 1) * itemsPerPage
   const endIndex = startIndex + itemsPerPage
   const currentPageData = filteredData.slice(startIndex, endIndex)
+
+  // Get visible columns array
+  const visibleColumnsArray = tableColumns.filter(col => visibleColumns.has(col))
 
   // If showing case page, render it instead
   if (showCasePage) {
@@ -226,7 +315,7 @@ const DataTable: React.FC = () => {
         </div>
       )}
 
-      {/* Filters and Search */}
+      {/* Filters and Controls */}
       <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div className="flex items-center space-x-4">
@@ -247,6 +336,65 @@ const DataTable: React.FC = () => {
           </div>
           
           <div className="flex items-center space-x-3">
+            {/* Rows per page selector */}
+            <div className="flex items-center space-x-2">
+              <span className="text-sm text-gray-600 dark:text-gray-400">Lignes par page:</span>
+              <select
+                value={itemsPerPage}
+                onChange={(e) => {
+                  setItemsPerPage(Number(e.target.value))
+                  setCurrentPage(1)
+                }}
+                className="px-3 py-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value={5}>5</option>
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
+
+            {/* Column selector */}
+            <div className="relative">
+              <button
+                onClick={() => setShowColumnSelector(!showColumnSelector)}
+                className="flex items-center space-x-2 px-3 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
+              >
+                <Columns className="w-4 h-4" />
+                <span>Colonnes ({visibleColumns.size})</span>
+              </button>
+
+              {showColumnSelector && (
+                <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-80 overflow-y-auto">
+                  <div className="p-3 border-b border-gray-200 dark:border-gray-700">
+                    <h3 className="text-sm font-medium text-gray-900 dark:text-white">Sélectionner les colonnes</h3>
+                  </div>
+                  <div className="p-2">
+                    {tableColumns.map((column) => (
+                      <label key={column} className="flex items-center space-x-2 p-2 hover:bg-gray-50 dark:hover:bg-gray-700 rounded cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={visibleColumns.has(column)}
+                          onChange={() => handleColumnToggle(column)}
+                          className="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">{column}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="p-3 border-t border-gray-200 dark:border-gray-700">
+                    <button
+                      onClick={() => setShowColumnSelector(false)}
+                      className="w-full px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm transition-colors"
+                    >
+                      Fermer
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+            
             <span className="text-sm text-gray-600 dark:text-gray-400">
               {filteredData.length} résultat{filteredData.length > 1 ? 's' : ''}
             </span>
@@ -265,6 +413,40 @@ const DataTable: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="w-10 h-10 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center">
+                <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Confirmer la suppression</h3>
+                <p className="text-gray-600 dark:text-gray-400">Cette action est irréversible.</p>
+              </div>
+            </div>
+            <p className="text-gray-700 dark:text-gray-300 mb-6">
+              Êtes-vous sûr de vouloir supprimer le dossier <strong>{showDeleteConfirm}</strong> ?
+            </p>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setShowDeleteConfirm(null)}
+                className="px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-400 dark:hover:bg-gray-500 transition-colors"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={() => handleDeleteRow(showDeleteConfirm)}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+              >
+                Supprimer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Table */}
       <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
@@ -300,7 +482,7 @@ const DataTable: React.FC = () => {
                           className="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
                         />
                       </th>
-                      {tableColumns.map((column) => (
+                      {visibleColumnsArray.map((column) => (
                         <th
                           key={column}
                           className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors whitespace-nowrap"
@@ -325,6 +507,7 @@ const DataTable: React.FC = () => {
                     {currentPageData.map((record, index) => {
                       const recordId = record.id || record.DOSSIER || index.toString()
                       const dossier = record.DOSSIER || `Record-${index + 1}`
+                      const isEditing = editingRow === recordId
                       
                       return (
                         <tr
@@ -339,47 +522,72 @@ const DataTable: React.FC = () => {
                               className="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
                             />
                           </td>
-                          {tableColumns.map((column) => (
+                          {visibleColumnsArray.map((column) => (
                             <td key={column} className="px-6 py-4 whitespace-nowrap">
-                              <div className={`text-sm ${
-                                column === 'DOSSIER' ? 'font-medium text-gray-900 dark:text-white' :
-                                column === 'DATE' || column === 'DATE2' ? 'text-gray-900 dark:text-white font-mono' :
-                                column.toLowerCase().includes('payable') ? 'font-medium text-gray-900 dark:text-white' :
-                                column === 'DEPART' || column === 'ARRIVEE' ? 'font-mono text-gray-900 dark:text-white' :
-                                'text-gray-900 dark:text-white'
-                              }`}>
-                                {formatCellValue(record[column], column)}
-                              </div>
+                              {isEditing ? (
+                                <input
+                                  type="text"
+                                  value={editingData[column] || ''}
+                                  onChange={(e) => handleEditFieldChange(column, e.target.value)}
+                                  className="w-full px-2 py-1 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                              ) : (
+                                <div className={`text-sm ${
+                                  column === 'DOSSIER' ? 'font-medium text-gray-900 dark:text-white' :
+                                  column === 'DATE' || column === 'DATE2' ? 'text-gray-900 dark:text-white font-mono' :
+                                  column.toLowerCase().includes('payable') ? 'font-medium text-gray-900 dark:text-white' :
+                                  column === 'DEPART' || column === 'ARRIVEE' ? 'font-mono text-gray-900 dark:text-white' :
+                                  'text-gray-900 dark:text-white'
+                                }`}>
+                                  {formatCellValue(record[column], column)}
+                                </div>
+                              )}
                             </td>
                           ))}
                           <td className="sticky right-0 z-10 px-6 py-4 whitespace-nowrap text-sm font-medium bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 shadow-lg">
                             <div className="flex items-center space-x-2">
-                              <button
-                                onClick={() => handleViewCase(dossier)}
-                                className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 transition-colors p-1 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20"
-                                title="Voir le dossier"
-                              >
-                                <FileText className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => handleViewCase(dossier)}
-                                className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300 transition-colors p-1 rounded hover:bg-green-50 dark:hover:bg-green-900/20"
-                                title="Voir les détails"
-                              >
-                                <Eye className="w-4 h-4" />
-                              </button>
-                              <button
-                                className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-300 transition-colors p-1 rounded hover:bg-gray-50 dark:hover:bg-gray-900/20"
-                                title="Modifier"
-                              >
-                                <Edit className="w-4 h-4" />
-                              </button>
-                              <button
-                                className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 transition-colors p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20"
-                                title="Supprimer"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                              {isEditing ? (
+                                <>
+                                  <button
+                                    onClick={handleSaveEdit}
+                                    className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300 transition-colors p-1 rounded hover:bg-green-50 dark:hover:bg-green-900/20"
+                                    title="Sauvegarder"
+                                  >
+                                    <Save className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={handleCancelEdit}
+                                    className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-300 transition-colors p-1 rounded hover:bg-gray-50 dark:hover:bg-gray-900/20"
+                                    title="Annuler"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => setShowDeleteConfirm(dossier)}
+                                    className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 transition-colors p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20"
+                                    title="Supprimer"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    onClick={() => handleViewCase(dossier)}
+                                    className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 transition-colors p-1 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                                    title="Voir le dossier"
+                                  >
+                                    <FileText className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleEditRow(record)}
+                                    className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-300 transition-colors p-1 rounded hover:bg-gray-50 dark:hover:bg-gray-900/20"
+                                    title="Modifier"
+                                  >
+                                    <Edit className="w-4 h-4" />
+                                  </button>
+                                </>
+                              )}
                             </div>
                           </td>
                         </tr>

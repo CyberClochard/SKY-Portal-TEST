@@ -1,0 +1,427 @@
+{
+  "name": "New Reservation Workflow",
+  "description": "Creates a new reservation with AWB assignment and airline booking",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "new-reservation",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-new-reservation",
+      "name": "New Reservation Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "new-reservation"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Validate incoming reservation data\nconst reservationData = items[0].json;\n\n// Validation\nconst errors = [];\n\nif (!reservationData.humName || reservationData.humName.trim() === '') {\n  errors.push('HUM name is required');\n}\n\nif (!reservationData.departureAirport || !['ORY', 'CDG'].includes(reservationData.departureAirport)) {\n  errors.push('Departure airport must be ORY or CDG');\n}\n\nif (!reservationData.destinationAirport || reservationData.destinationAirport.length !== 3) {\n  errors.push('Destination airport must be a 3-letter IATA code');\n}\n\nif (!reservationData.desiredFlight || reservationData.desiredFlight.trim() === '') {\n  errors.push('Desired flight is required');\n}\n\nif (!reservationData.departureDate) {\n  errors.push('Departure date is required');\n}\n\n// Check if date is in the future\nconst departureDate = new Date(reservationData.departureDate);\nconst today = new Date();\ntoday.setHours(0, 0, 0, 0);\n\nif (departureDate < today) {\n  errors.push('Departure date cannot be in the past');\n}\n\nif (errors.length > 0) {\n  return [{\n    json: {\n      success: false,\n      errors: errors,\n      message: 'Validation failed: ' + errors.join(', ')\n    }\n  }];\n}\n\n// Generate dossier number\nconst now = new Date();\nconst year = now.getFullYear().toString().slice(-2);\nconst month = (now.getMonth() + 1).toString().padStart(2, '0');\nconst day = now.getDate().toString().padStart(2, '0');\nconst time = now.getHours().toString().padStart(2, '0') + now.getMinutes().toString().padStart(2, '0');\nconst dossierNumber = `AE${year}/${month}${day}${time}`;\n\n// Prepare validated data\nconst validatedData = {\n  ...reservationData,\n  dossierNumber: dossierNumber,\n  validatedAt: now.toISOString(),\n  status: 'pending_awb_assignment'\n};\n\nconsole.log('Reservation validated:', validatedData);\n\nreturn [{ json: validatedData }];"
+      },
+      "id": "validate-reservation",
+      "name": "Validate Reservation Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.success}}",
+              "operation": "notEqual",
+              "value2": false
+            }
+          ]
+        }
+      },
+      "id": "check-validation",
+      "name": "Check Validation Result",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://supabase.skylogistics.fr/rest/v1/awbStock124",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "isUsed",
+              "value": "eq.false"
+            },
+            {
+              "name": "limit",
+              "value": "1"
+            },
+            {
+              "name": "order",
+              "value": "id.asc"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc1MTEyNTYyMCwiZXhwIjo0OTA2Nzk5MjIwLCJyb2xlIjoiYW5vbiJ9.KtZo2tsCZGadFu2ibWCiBVJ7OI1Ch7VZTELX5HZO97Y"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc1MTEyNTYyMCwiZXhwIjo0OTA2Nzk5MjIwLCJyb2xlIjoic2VydmljZV9yb2xlIn0.J1FXLh8BKU1FCItemCLsI4t8uKsbON_bV4lUDVuLu_0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-available-awb",
+      "name": "Get Available AWB",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 200],
+      "credentials": {
+        "supabaseApi": {
+          "id": "your-supabase-credentials-id",
+          "name": "Supabase SkyLogistics"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json.length}}",
+              "operation": "largerEqual",
+              "value2": 1
+            }
+          ]
+        }
+      },
+      "id": "check-awb-available",
+      "name": "Check AWB Available",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "url": "https://supabase.skylogistics.fr/rest/v1/awbStock124",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "id",
+              "value": "eq.{{$('Get Available AWB').item.json[0].id}}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc1MTEyNTYyMCwiZXhwIjo0OTA2Nzk5MjIwLCJyb2xlIjoiYW5vbiJ9.KtZo2tsCZGadFu2ibWCiBVJ7OI1Ch7VZTELX5HZO97Y"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc1MTEyNTYyMCwiZXhwIjo0OTA2Nzk5MjIwLCJyb2xlIjoic2VydmljZV9yb2xlIn0.J1FXLh8BKU1FCItemCLsI4t8uKsbON_bV4lUDVuLu_0"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"isUsed\": true\n}",
+        "options": {}
+      },
+      "id": "mark-awb-used",
+      "name": "Mark AWB as Used",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 120],
+      "credentials": {
+        "supabaseApi": {
+          "id": "your-supabase-credentials-id",
+          "name": "Supabase SkyLogistics"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Prepare data for MASTER table insertion\nconst reservationData = $('Validate Reservation Data').item.json;\nconst awbData = $('Get Available AWB').item.json[0];\n\n// Generate full AWB number (prefix + awb)\nconst fullAwbNumber = awbData.prefix + awbData.awb;\n\n// Prepare MASTER record\nconst masterRecord = {\n  DOSSIER: reservationData.dossierNumber,\n  DATE: reservationData.departureDate,\n  DATE2: new Date().toISOString().split('T')[0], // Today's date\n  CLIENT: 'Air Algérie',\n  DEPART: reservationData.departureAirport,\n  ARRIVEE: reservationData.destinationAirport,\n  LTA: fullAwbNumber,\n  TYPE: 'Passenger',\n  EXPEDITEUR: reservationData.humName,\n  DESTINATAIRE: reservationData.humName,\n  POIDS: '23', // Default weight for passenger\n  PIECES: '1', // Default pieces\n  STATUS: 'Réservé',\n  NETPAYABLE: '0', // To be calculated later\n  // Add any other required fields\n  FLIGHT: reservationData.desiredFlight,\n  BOOKING_TYPE: 'Reservation',\n  CREATED_AT: new Date().toISOString()\n};\n\nconsole.log('Prepared MASTER record:', masterRecord);\n\nreturn [{\n  json: {\n    masterRecord: masterRecord,\n    awbNumber: fullAwbNumber,\n    awbId: awbData.id,\n    reservationData: reservationData\n  }\n}];"
+      },
+      "id": "prepare-master-record",
+      "name": "Prepare MASTER Record",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1560, 120]
+    },
+    {
+      "parameters": {
+        "url": "https://supabase.skylogistics.fr/rest/v1/MASTER",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc1MTEyNTYyMCwiZXhwIjo0OTA2Nzk5MjIwLCJyb2xlIjoiYW5vbiJ9.KtZo2tsCZGadFu2ibWCiBVJ7OI1Ch7VZTELX5HZO97Y"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc1MTEyNTYyMCwiZXhwIjo0OTA2Nzk5MjIwLCJyb2xlIjoic2VydmljZV9yb2xlIn0.J1FXLh8BKU1FCItemCLsI4t8uKsbON_bV4lUDVuLu_0"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{JSON.stringify($json.masterRecord)}}",
+        "options": {}
+      },
+      "id": "insert-master-record",
+      "name": "Insert MASTER Record",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 120],
+      "credentials": {
+        "supabaseApi": {
+          "id": "your-supabase-credentials-id",
+          "name": "Supabase SkyLogistics"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Simulate sending booking request to Air Algérie\n// In a real implementation, this would call the airline's API\n\nconst reservationData = $('Validate Reservation Data').item.json;\nconst awbNumber = $('Prepare MASTER Record').item.json.awbNumber;\nconst dossierNumber = reservationData.dossierNumber;\n\n// Simulate airline booking request\nconst bookingRequest = {\n  airline: 'Air Algérie',\n  flightNumber: reservationData.desiredFlight,\n  passengerName: reservationData.humName,\n  departureAirport: reservationData.departureAirport,\n  arrivalAirport: reservationData.destinationAirport,\n  departureDate: reservationData.departureDate,\n  awbNumber: awbNumber,\n  dossierNumber: dossierNumber,\n  bookingType: 'Reservation',\n  requestedAt: new Date().toISOString()\n};\n\nconsole.log('Sending booking request to Air Algérie:', bookingRequest);\n\n// Simulate successful response\nconst bookingResponse = {\n  success: true,\n  bookingReference: 'AH' + Date.now().toString().slice(-6),\n  status: 'Confirmed',\n  message: 'Booking request sent successfully to Air Algérie',\n  confirmationNumber: 'AH-' + dossierNumber,\n  estimatedConfirmationTime: '2-4 hours'\n};\n\nconsole.log('Airline booking response:', bookingResponse);\n\nreturn [{\n  json: {\n    bookingRequest: bookingRequest,\n    bookingResponse: bookingResponse,\n    awbNumber: awbNumber,\n    dossierNumber: dossierNumber\n  }\n}];"
+      },
+      "id": "send-airline-booking",
+      "name": "Send Airline Booking Request",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2000, 120]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Prepare final success response\nconst reservationData = $('Validate Reservation Data').item.json;\nconst awbNumber = $('Prepare MASTER Record').item.json.awbNumber;\nconst bookingData = $('Send Airline Booking Request').item.json;\nconst masterRecord = $('Insert MASTER Record').item.json[0];\n\nconst successResponse = {\n  success: true,\n  message: `Réservation créée avec succès pour ${reservationData.humName}`,\n  data: {\n    dossierNumber: reservationData.dossierNumber,\n    awbNumber: awbNumber,\n    bookingReference: bookingData.bookingResponse.bookingReference,\n    confirmationNumber: bookingData.bookingResponse.confirmationNumber,\n    passengerName: reservationData.humName,\n    flight: reservationData.desiredFlight,\n    route: `${reservationData.departureAirport} → ${reservationData.destinationAirport}`,\n    departureDate: reservationData.departureDate,\n    status: 'Réservé',\n    airline: 'Air Algérie',\n    estimatedConfirmation: bookingData.bookingResponse.estimatedConfirmationTime\n  },\n  timestamp: new Date().toISOString()\n};\n\nconsole.log('Final reservation response:', successResponse);\n\nreturn [{ json: successResponse }];"
+      },
+      "id": "success-response",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2220, 120]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Handle no AWB available error\nconst reservationData = $('Validate Reservation Data').item.json;\n\nconst errorResponse = {\n  success: false,\n  error: 'no_awb_available',\n  message: 'Aucun AWB disponible pour Air Algérie. Veuillez contacter l\\'administrateur.',\n  data: {\n    dossierNumber: reservationData.dossierNumber,\n    passengerName: reservationData.humName,\n    requestedFlight: reservationData.desiredFlight\n  },\n  timestamp: new Date().toISOString()\n};\n\nconsole.log('No AWB available error:', errorResponse);\n\nreturn [{ json: errorResponse }];"
+      },
+      "id": "no-awb-error",
+      "name": "No AWB Available Error",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1340, 280]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Handle validation error\nconst validationResult = items[0].json;\n\nconst errorResponse = {\n  success: false,\n  error: 'validation_failed',\n  message: validationResult.message || 'Validation des données échouée',\n  errors: validationResult.errors || [],\n  timestamp: new Date().toISOString()\n};\n\nconsole.log('Validation error response:', errorResponse);\n\nreturn [{ json: errorResponse }];"
+      },
+      "id": "validation-error",
+      "name": "Validation Error Response",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json}}"
+      },
+      "id": "response-webhook",
+      "name": "Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2440, 300]
+    }
+  ],
+  "connections": {
+    "New Reservation Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Reservation Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Reservation Data": {
+      "main": [
+        [
+          {
+            "node": "Check Validation Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Validation Result": {
+      "main": [
+        [
+          {
+            "node": "Get Available AWB",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Validation Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Available AWB": {
+      "main": [
+        [
+          {
+            "node": "Check AWB Available",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check AWB Available": {
+      "main": [
+        [
+          {
+            "node": "Mark AWB as Used",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No AWB Available Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark AWB as Used": {
+      "main": [
+        [
+          {
+            "node": "Prepare MASTER Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare MASTER Record": {
+      "main": [
+        [
+          {
+            "node": "Insert MASTER Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert MASTER Record": {
+      "main": [
+        [
+          {
+            "node": "Send Airline Booking Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Airline Booking Request": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Success Response": {
+      "main": [
+        [
+          {
+            "node": "Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No AWB Available Error": {
+      "main": [
+        [
+          {
+            "node": "Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validation Error Response": {
+      "main": [
+        [
+          {
+            "node": "Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": ["reservation", "awb", "airline", "booking"],
+  "triggerCount": 1,
+  "updatedAt": "2025-01-01T12:00:00.000Z",
+  "versionId": "1"
+}

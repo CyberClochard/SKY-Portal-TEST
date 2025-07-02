@@ -1,5 +1,6 @@
 import React from 'react'
 import { BarChart3, TrendingUp, Users, FileText } from 'lucide-react'
+import ReservationForm from './ReservationForm'
 
 const Dashboard: React.FC = () => {
   const stats = [
@@ -88,21 +89,14 @@ const Dashboard: React.FC = () => {
         })}
       </div>
 
-      {/* Graphiques et activité récente */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Graphique des performances */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
-          <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Performances Mensuelles</h3>
-          <div className="h-64 flex items-center justify-center bg-gray-50 dark:bg-gray-900 rounded-lg">
-            <div className="text-center">
-              <BarChart3 className="w-16 h-16 text-gray-400 dark:text-gray-600 mx-auto mb-4" />
-              <p className="text-gray-600 dark:text-gray-400">Graphique des performances</p>
-              <p className="text-gray-500 dark:text-gray-500 text-sm">Intégration des graphiques à venir</p>
-            </div>
-          </div>
+      {/* Nouvelle section Réservation */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        {/* Formulaire de réservation - prend 2 colonnes sur xl */}
+        <div className="xl:col-span-2">
+          <ReservationForm />
         </div>
 
-        {/* Activité récente */}
+        {/* Activité récente - prend 1 colonne */}
         <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
           <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Activité Récente</h3>
           <div className="space-y-4">
@@ -122,26 +116,41 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Aperçu des données */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-xl font-semibold text-gray-900 dark:text-white">Aperçu des Données</h3>
-          <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
-            Voir tous les détails
-          </button>
+      {/* Graphiques et aperçu des données */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Graphique des performances */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
+          <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Performances Mensuelles</h3>
+          <div className="h-64 flex items-center justify-center bg-gray-50 dark:bg-gray-900 rounded-lg">
+            <div className="text-center">
+              <BarChart3 className="w-16 h-16 text-gray-400 dark:text-gray-600 mx-auto mb-4" />
+              <p className="text-gray-600 dark:text-gray-400">Graphique des performances</p>
+              <p className="text-gray-500 dark:text-gray-500 text-sm">Intégration des graphiques à venir</p>
+            </div>
+          </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 transition-colors duration-300">
-            <h4 className="text-gray-700 dark:text-gray-300 font-medium mb-2">Expéditions Aujourd'hui</h4>
-            <p className="text-3xl font-bold text-gray-900 dark:text-white">24</p>
+
+        {/* Aperçu des données */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xl font-semibold text-gray-900 dark:text-white">Aperçu des Données</h3>
+            <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
+              Voir tous les détails
+            </button>
           </div>
-          <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 transition-colors duration-300">
-            <h4 className="text-gray-700 dark:text-gray-300 font-medium mb-2">En Transit</h4>
-            <p className="text-3xl font-bold text-yellow-500">12</p>
-          </div>
-          <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 transition-colors duration-300">
-            <h4 className="text-gray-700 dark:text-gray-300 font-medium mb-2">Livrées</h4>
-            <p className="text-3xl font-bold text-green-500">156</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 transition-colors duration-300">
+              <h4 className="text-gray-700 dark:text-gray-300 font-medium mb-2">Expéditions Aujourd'hui</h4>
+              <p className="text-3xl font-bold text-gray-900 dark:text-white">24</p>
+            </div>
+            <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 transition-colors duration-300">
+              <h4 className="text-gray-700 dark:text-gray-300 font-medium mb-2">En Transit</h4>
+              <p className="text-3xl font-bold text-yellow-500">12</p>
+            </div>
+            <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 transition-colors duration-300">
+              <h4 className="text-gray-700 dark:text-gray-300 font-medium mb-2">Livrées</h4>
+              <p className="text-3xl font-bold text-green-500">156</p>
+            </div>
           </div>
         </div>
       </div>

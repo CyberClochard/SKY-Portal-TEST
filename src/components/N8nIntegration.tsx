@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Zap, Play, Settings, CheckCircle, XCircle, Clock, RefreshCw, ExternalLink, AlertTriangle, Database, Mail, FileText, Shield, Globe, Webhook, Send, Upload, Download, Users, Calendar, BarChart3 } from 'lucide-react'
+import { Zap, Play, Settings, CheckCircle, XCircle, Clock, RefreshCw, ExternalLink, AlertTriangle, Database, Mail, FileText, Shield, Globe, Webhook, Send, Upload, Download, Users, Calendar, BarChart3, Plane } from 'lucide-react'
 import { N8nIntegration, N8nWebhookConfig } from '../lib/n8n'
 import { supabase } from '../lib/supabase'
 
@@ -62,6 +62,15 @@ const N8nIntegrationComponent: React.FC = () => {
     message: '',
     sendEmail: true,
     sendSMS: false
+  })
+
+  // New reservation test form
+  const [reservationTestForm, setReservationTestForm] = useState({
+    humName: 'Test Passenger',
+    departureAirport: 'CDG',
+    destinationAirport: 'ALG',
+    desiredFlight: 'AH1006',
+    departureDate: new Date(Date.now() + 86400000).toISOString().split('T')[0] // Tomorrow
   })
 
   const n8nClient = new N8nIntegration(n8nConfig.baseUrl, n8nConfig.apiKey)
@@ -210,6 +219,15 @@ const N8nIntegrationComponent: React.FC = () => {
       }
     } catch (err) {
       setError(`Erreur Supabase: ${err instanceof Error ? err.message : 'Erreur inconnue'}`)
+    }
+  }
+
+  // Test new reservation workflow
+  const testNewReservation = async () => {
+    const result = await executeWorkflow('new-reservation', 'Test Nouvelle Réservation', reservationTestForm)
+
+    if (result) {
+      setSuccess('Test de création de réservation effectué avec succès')
     }
   }
 
@@ -463,7 +481,89 @@ const N8nIntegrationComponent: React.FC = () => {
       )}
 
       {/* Webhook Tests */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+        {/* New Reservation Test */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
+              <Plane className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Nouvelle Réservation</h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Test du workflow de création de réservation</p>
+            </div>
+          </div>
+          
+          <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 mb-4">
+            <div className="flex items-start space-x-2">
+              <Webhook className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5" />
+              <div className="text-sm">
+                <p className="text-blue-800 dark:text-blue-200 font-medium">Webhook configuré :</p>
+                <p className="text-blue-700 dark:text-blue-300 font-mono text-xs break-all">
+                  https://n8n.skylogistics.fr/webhook/new-reservation
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Test form */}
+          <div className="space-y-3 mb-4">
+            <input
+              type="text"
+              value={reservationTestForm.humName}
+              onChange={(e) => setReservationTestForm(prev => ({ ...prev, humName: e.target.value }))}
+              placeholder="Nom HUM"
+              className="w-full px-3 py-2 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                value={reservationTestForm.departureAirport}
+                onChange={(e) => setReservationTestForm(prev => ({ ...prev, departureAirport: e.target.value }))}
+                className="px-3 py-2 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="CDG">CDG</option>
+                <option value="ORY">ORY</option>
+              </select>
+              <input
+                type="text"
+                value={reservationTestForm.destinationAirport}
+                onChange={(e) => setReservationTestForm(prev => ({ ...prev, destinationAirport: e.target.value.toUpperCase() }))}
+                placeholder="Destination"
+                maxLength={3}
+                className="px-3 py-2 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="text"
+                value={reservationTestForm.desiredFlight}
+                onChange={(e) => setReservationTestForm(prev => ({ ...prev, desiredFlight: e.target.value.toUpperCase() }))}
+                placeholder="Vol (ex: AH1006)"
+                className="px-3 py-2 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <input
+                type="date"
+                value={reservationTestForm.departureDate}
+                onChange={(e) => setReservationTestForm(prev => ({ ...prev, departureDate: e.target.value }))}
+                className="px-3 py-2 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+          
+          <button
+            onClick={testNewReservation}
+            disabled={loading['new-reservation'] || !n8nConfig.baseUrl}
+            className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg transition-colors"
+          >
+            {loading['new-reservation'] ? (
+              <RefreshCw className="w-4 h-4 animate-spin" />
+            ) : (
+              <Play className="w-4 h-4" />
+            )}
+            <span>Tester Nouvelle Réservation</span>
+          </button>
+        </div>
+
         {/* CASS File Processing Test */}
         <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
           <div className="flex items-center space-x-3 mb-4">
@@ -505,8 +605,8 @@ const N8nIntegrationComponent: React.FC = () => {
         {/* Flight Search Test */}
         <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
           <div className="flex items-center space-x-3 mb-4">
-            <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
-              <Webhook className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            <div className="w-10 h-10 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
+              <Webhook className="w-5 h-5 text-green-600 dark:text-green-400" />
             </div>
             <div>
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Recherche de Vols Amadeus</h3>
@@ -514,12 +614,12 @@ const N8nIntegrationComponent: React.FC = () => {
             </div>
           </div>
           
-          <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 mb-4">
+          <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 mb-4">
             <div className="flex items-start space-x-2">
-              <ExternalLink className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5" />
+              <ExternalLink className="w-4 h-4 text-green-600 dark:text-green-400 mt-0.5" />
               <div className="text-sm">
-                <p className="text-blue-800 dark:text-blue-200 font-medium">Webhook configuré :</p>
-                <p className="text-blue-700 dark:text-blue-300 font-mono text-xs break-all">
+                <p className="text-green-800 dark:text-green-200 font-medium">Webhook configuré :</p>
+                <p className="text-green-700 dark:text-green-300 font-mono text-xs break-all">
                   https://n8n.skylogistics.fr/webhook/1f5a8aaf-64cd-49a2-b56c-95d7554a17dc
                 </p>
               </div>
@@ -529,7 +629,7 @@ const N8nIntegrationComponent: React.FC = () => {
           <button
             onClick={testFlightSearch}
             disabled={loading['1f5a8aaf-64cd-49a2-b56c-95d7554a17dc'] || !n8nConfig.baseUrl}
-            className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg transition-colors"
+            className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg transition-colors"
           >
             {loading['1f5a8aaf-64cd-49a2-b56c-95d7554a17dc'] ? (
               <RefreshCw className="w-4 h-4 animate-spin" />
@@ -991,6 +1091,7 @@ const N8nIntegrationComponent: React.FC = () => {
         <div className="space-y-2 text-sm text-blue-800 dark:text-blue-200">
           <p>• <strong>Webhooks configurés :</strong></p>
           <div className="ml-4 space-y-1 font-mono text-xs bg-blue-100 dark:bg-blue-900/30 p-2 rounded">
+            <p>- /webhook/new-reservation (Nouvelle réservation)</p>
             <p>- /webhook-test/57fbc81f-3166-4b75-bcc1-6badbe4ca8cc (Traitement CASS)</p>
             <p>- /webhook/1f5a8aaf-64cd-49a2-b56c-95d7554a17dc (Recherche de vols)</p>
             <p>- /webhook/email-notification</p>
@@ -1001,6 +1102,7 @@ const N8nIntegrationComponent: React.FC = () => {
           </div>
           <p>• <strong>Données reçues :</strong> Chaque workflow recevra les données du formulaire plus workflowId, timestamp et source</p>
           <p>• <strong>Réponse attendue :</strong> Les workflows peuvent retourner des données pour mettre à jour Supabase</p>
+          <p>• <strong>Nouvelle réservation :</strong> Assigne automatiquement un AWB depuis awbStock124 et crée un enregistrement MASTER</p>
         </div>
       </div>
     </div>
