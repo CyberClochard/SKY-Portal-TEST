@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Database, Settings, Home, ChevronLeft, Menu, Plane, Upload, Zap, X, CheckSquare } from 'lucide-react'
+import { Database, Settings, Home, ChevronLeft, Menu, Plane, Upload, Zap, X, CheckSquare, FileText } from 'lucide-react'
 import ThemeToggle from './ThemeToggle'
 
 interface SidebarProps {
@@ -49,6 +49,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, isCollapsed,
     { id: 'flights', icon: Plane, label: 'Recherche Vols' },
     { id: 'cass', icon: Upload, label: 'Fichier CASS' },
     { id: 'awb-validation', icon: CheckSquare, label: 'AWB Stock' },
+    { id: 'booking-confirmation', icon: FileText, label: 'Confirmation Réservation' },
     { id: 'roadmap', icon: Zap, label: 'Roadmap 2025' },
     { id: 'settings', icon: Settings, label: 'Paramètres' },
   ]
@@ -141,6 +142,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, isCollapsed,
                         item.id === 'flights' && !isActive ? 'text-blue-500' : 
                         item.id === 'cass' && !isActive ? 'text-orange-500' :
                         item.id === 'awb-validation' && !isActive ? 'text-purple-500' :
+                        item.id === 'booking-confirmation' && !isActive ? 'text-green-500' :
                         item.id === 'roadmap' && !isActive ? 'text-purple-500' : ''
                       }`} />
                       <span className="font-medium">{item.label}</span>
@@ -240,6 +242,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, isCollapsed,
                     item.id === 'flights' && !isActive ? 'text-blue-500' : 
                     item.id === 'cass' && !isActive ? 'text-orange-500' :
                     item.id === 'awb-validation' && !isActive ? 'text-purple-500' :
+                    item.id === 'booking-confirmation' && !isActive ? 'text-green-500' :
                     item.id === 'roadmap' && !isActive ? 'text-purple-500' : ''
                   }`} />
                   {!isCollapsed && (

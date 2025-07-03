@@ -6,12 +6,60 @@ import DataTable from './components/DataTable'
 import FlightSearch from './components/FlightSearch'
 import CassFileProcessor from './components/CassFileProcessor'
 import AWBValidation from './components/AWBValidation'
+import BookingConfirmationForm from './components/BookingConfirmationForm'
+import BookingConfirmationPreview from './components/BookingConfirmationPreview'
 import Roadmap from './components/Roadmap'
 import Settings from './components/Settings'
+
+interface BookingConfirmationData {
+  // Document info
+  dossierNumber: string
+  ltaNumber: string
+  reservationDate: string
+  
+  // Deceased info
+  deceasedName: string
+  deceasedType: string
+  deceasedReference: string
+  specialRequirements: string
+  
+  // Client info
+  clientName: string
+  clientReference: string
+  clientEmail: string
+  clientPhone: string
+  
+  // Flight info
+  flightNumber: string
+  airline: string
+  aircraft: string
+  departureAirport: string
+  departureAirportName: string
+  departureDate: string
+  departureTime: string
+  arrivalAirport: string
+  arrivalAirportName: string
+  arrivalDate: string
+  arrivalTime: string
+  flightDuration: string
+  
+  // Delivery info
+  deliveryDate: string
+  deliveryTime: string
+  deliveryLocation: string
+  
+  // Special instructions
+  specialInstructions: string
+  
+  // Emergency contact
+  emergencyContactName: string
+  emergencyContactPhone: string
+}
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [bookingConfirmationData, setBookingConfirmationData] = useState<BookingConfirmationData | null>(null)
 
   // Get n8n base URL from localStorage for workflows
   const n8nBaseUrl = localStorage.getItem('n8n_base_url') || ''
@@ -28,6 +76,21 @@ function App() {
         return <CassFileProcessor n8nBaseUrl={n8nBaseUrl} />
       case 'awb-validation':
         return <AWBValidation />
+      case 'booking-confirmation':
+        if (bookingConfirmationData) {
+          return (
+            <BookingConfirmationPreview 
+              data={bookingConfirmationData} 
+              onBack={() => setBookingConfirmationData(null)} 
+            />
+          )
+        } else {
+          return (
+            <BookingConfirmationForm 
+              onGenerate={setBookingConfirmationData} 
+            />
+          )
+        }
       case 'roadmap':
         return <Roadmap />
       case 'settings':
