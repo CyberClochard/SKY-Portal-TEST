@@ -26,6 +26,7 @@ const ReservationForm: React.FC<ReservationFormProps> = ({ n8nBaseUrl }) => {
   const [result, setResult] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [showDestinationDropdown, setShowDestinationDropdown] = useState(false)
 
   // Supported airports
   const supportedDepartureAirports = [
@@ -52,6 +53,24 @@ const ReservationForm: React.FC<ReservationFormProps> = ({ n8nBaseUrl }) => {
     // Clear messages when user starts typing
     if (error) setError(null)
     if (success) setSuccess(null)
+  }
+
+  const handleDestinationFocus = () => {
+    if (formData.destinationAirport.length === 0) {
+      setShowDestinationDropdown(true)
+    }
+  }
+
+  const handleDestinationBlur = () => {
+    // Delay hiding to allow click on dropdown items
+    setTimeout(() => {
+      setShowDestinationDropdown(false)
+    }, 200)
+  }
+
+  const handleDestinationSelect = (code: string) => {
+    handleInputChange('destinationAirport', code)
+    setShowDestinationDropdown(false)
   }
 
   const validateForm = (): string[] => {
@@ -100,13 +119,6 @@ const ReservationForm: React.FC<ReservationFormProps> = ({ n8nBaseUrl }) => {
       return
     }
 
-    // Check n8n configuration
-    const currentN8nBaseUrl = n8nBaseUrl || localStorage.getItem('n8n_base_url') || 'https://n8n.skylogistics.fr'
-    if (!currentN8nBaseUrl || currentN8nBaseUrl.trim() === '') {
-      setError('Configuration n8n requise. Veuillez configurer n8n dans les paramètres.')
-      return
-    }
-
     setIsSubmitting(true)
     setError(null)
     setSuccess(null)
@@ -127,8 +139,8 @@ const ReservationForm: React.FC<ReservationFormProps> = ({ n8nBaseUrl }) => {
 
       console.log('Submitting reservation to n8n:', workflowData)
 
-      // Call n8n workflow (you'll need to provide the actual webhook URL)
-      const webhookUrl = `${currentN8nBaseUrl}/webhook/new-reservation`
+      // Updated production webhook URL
+      const webhookUrl = 'https://n8n.skylogistics.fr/webhook/1ca86556-aa65-4bf9-8a26-5ef6b8d59d79'
       
       const response = await fetch(webhookUrl, {
         method: 'POST',
@@ -284,13 +296,15 @@ const ReservationForm: React.FC<ReservationFormProps> = ({ n8nBaseUrl }) => {
                 type="text"
                 value={formData.destinationAirport}
                 onChange={(e) => handleInputChange('destinationAirport', e.target.value.toUpperCase())}
+                onFocus={handleDestinationFocus}
+                onBlur={handleDestinationBlur}
                 placeholder="Code IATA (ex: ALG)"
                 maxLength={3}
                 className="w-full px-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors font-mono"
                 disabled={isSubmitting}
               />
               {/* Common destinations dropdown */}
-              {formData.destinationAirport.length === 0 && (
+              {showDestinationDropdown && (
                 <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
                   <div className="p-2 text-xs text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-600">
                     Destinations courantes:
@@ -298,7 +312,7 @@ const ReservationForm: React.FC<ReservationFormProps> = ({ n8nBaseUrl }) => {
                   {commonDestinations.map(dest => (
                     <button
                       key={dest.code}
-                      onClick={() => handleInputChange('destinationAirport', dest.code)}
+                      onClick={() => handleDestinationSelect(dest.code)}
                       className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 text-sm text-gray-900 dark:text-white transition-colors"
                       type="button"
                     >

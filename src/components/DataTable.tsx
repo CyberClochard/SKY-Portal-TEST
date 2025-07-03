@@ -1,10 +1,29 @@
 import React, { useState, useEffect } from 'react'
-import { Search, Filter, Download, RefreshCw, Eye, Edit, Trash2, Plus, ChevronLeft, ChevronRight, FileText, AlertCircle, Save, X, Check, Settings, Columns } from 'lucide-react'
+import { Search, Filter, Download, RefreshCw, Eye, Edit, Trash2, Plus, ChevronLeft, ChevronRight, FileText, AlertCircle, Save, X, Check, Settings, Columns, Calendar, User, MapPin, Plane } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import CasePage from './CasePage'
 
 interface MasterRecord {
   [key: string]: any
+}
+
+interface NewDossierFormData {
+  DOSSIER: string
+  DATE: string
+  DATE2: string
+  CLIENT: string
+  DEPART: string
+  ARRIVEE: string
+  LTA: string
+  TYPE: string
+  EXPEDITEUR: string
+  DESTINATAIRE: string
+  POIDS: string
+  PIECES: string
+  STATUS: string
+  NETPAYABLE: string
+  FLIGHT: string
+  [key: string]: string
 }
 
 const DataTable: React.FC = () => {
@@ -25,6 +44,25 @@ const DataTable: React.FC = () => {
   const [editingRow, setEditingRow] = useState<string | null>(null)
   const [editingData, setEditingData] = useState<MasterRecord>({})
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
+  const [showNewDossierModal, setShowNewDossierModal] = useState(false)
+  const [newDossierData, setNewDossierData] = useState<NewDossierFormData>({
+    DOSSIER: '',
+    DATE: '',
+    DATE2: '',
+    CLIENT: '',
+    DEPART: '',
+    ARRIVEE: '',
+    LTA: '',
+    TYPE: '',
+    EXPEDITEUR: '',
+    DESTINATAIRE: '',
+    POIDS: '',
+    PIECES: '',
+    STATUS: '',
+    NETPAYABLE: '',
+    FLIGHT: ''
+  })
+  const [creatingDossier, setCreatingDossier] = useState(false)
 
   // Load data from Supabase MASTER table
   useEffect(() => {
@@ -72,6 +110,104 @@ const DataTable: React.FC = () => {
       setError('Erreur de connexion à la base de données')
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Generate new dossier number
+  const generateDossierNumber = () => {
+    const now = new Date()
+    const year = now.getFullYear().toString().slice(-2)
+    const month = (now.getMonth() + 1).toString().padStart(2, '0')
+    const day = now.getDate().toString().padStart(2, '0')
+    const time = now.getHours().toString().padStart(2, '0') + now.getMinutes().toString().padStart(2, '0')
+    return `AE${year}/${month}${day}${time}`
+  }
+
+  // Initialize new dossier form
+  const initializeNewDossier = () => {
+    const today = new Date().toISOString().split('T')[0]
+    setNewDossierData({
+      DOSSIER: generateDossierNumber(),
+      DATE: today,
+      DATE2: today,
+      CLIENT: '',
+      DEPART: '',
+      ARRIVEE: '',
+      LTA: '',
+      TYPE: 'Standard',
+      EXPEDITEUR: '',
+      DESTINATAIRE: '',
+      POIDS: '0',
+      PIECES: '1',
+      STATUS: 'En cours',
+      NETPAYABLE: '0',
+      FLIGHT: ''
+    })
+    setShowNewDossierModal(true)
+  }
+
+  // Handle new dossier form changes
+  const handleNewDossierChange = (field: string, value: string) => {
+    setNewDossierData(prev => ({
+      ...prev,
+      [field]: value
+    }))
+  }
+
+  // Create new dossier
+  const createNewDossier = async () => {
+    // Validate required fields
+    const requiredFields = ['DOSSIER', 'DATE', 'CLIENT']
+    const missingFields = requiredFields.filter(field => !newDossierData[field]?.trim())
+    
+    if (missingFields.length > 0) {
+      setError(`Champs requis manquants: ${missingFields.join(', ')}`)
+      return
+    }
+
+    setCreatingDossier(true)
+    setError(null)
+
+    try {
+      const { data: insertedData, error: insertError } = await supabase
+        .from('MASTER')
+        .insert([newDossierData])
+        .select()
+
+      if (insertError) {
+        setError(`Erreur lors de la création: ${insertError.message}`)
+        return
+      }
+
+      // Add to local data
+      if (insertedData && insertedData[0]) {
+        setData(prevData => [insertedData[0], ...prevData])
+        setShowNewDossierModal(false)
+        
+        // Reset form
+        setNewDossierData({
+          DOSSIER: '',
+          DATE: '',
+          DATE2: '',
+          CLIENT: '',
+          DEPART: '',
+          ARRIVEE: '',
+          LTA: '',
+          TYPE: '',
+          EXPEDITEUR: '',
+          DESTINATAIRE: '',
+          POIDS: '',
+          PIECES: '',
+          STATUS: '',
+          NETPAYABLE: '',
+          FLIGHT: ''
+        })
+      }
+
+    } catch (err) {
+      setError('Erreur lors de la création du dossier')
+    } finally {
+      setCreatingDossier(false)
     }
   }
 
@@ -298,7 +434,10 @@ const DataTable: React.FC = () => {
             <Download className="w-4 h-4" />
             <span>Exporter</span>
           </button>
-          <button className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
+          <button 
+            onClick={initializeNewDossier}
+            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+          >
             <Plus className="w-4 h-4" />
             <span>Nouveau dossier</span>
           </button>
@@ -311,6 +450,265 @@ const DataTable: React.FC = () => {
           <div className="flex items-center space-x-2 text-red-600 dark:text-red-400">
             <AlertCircle className="w-5 h-5" />
             <span>{error}</span>
+          </div>
+        </div>
+      )}
+
+      {/* New Dossier Modal */}
+      {showNewDossierModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                    <Plus className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-semibold text-gray-900 dark:text-white">Nouveau Dossier</h3>
+                    <p className="text-gray-600 dark:text-gray-400">Créer un nouveau dossier dans la table MASTER</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowNewDossierModal(false)}
+                  className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Basic Information */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Numéro de Dossier *
+                  </label>
+                  <input
+                    type="text"
+                    value={newDossierData.DOSSIER}
+                    onChange={(e) => handleNewDossierChange('DOSSIER', e.target.value)}
+                    className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="AE25/..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Date *
+                  </label>
+                  <input
+                    type="date"
+                    value={newDossierData.DATE}
+                    onChange={(e) => handleNewDossierChange('DATE', e.target.value)}
+                    className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Date 2
+                  </label>
+                  <input
+                    type="date"
+                    value={newDossierData.DATE2}
+                    onChange={(e) => handleNewDossierChange('DATE2', e.target.value)}
+                    className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Client *
+                  </label>
+                  <input
+                    type="text"
+                    value={newDossierData.CLIENT}
+                    onChange={(e) => handleNewDossierChange('CLIENT', e.target.value)}
+                    className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Nom du client"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Départ
+                  </label>
+                  <input
+                    type="text"
+                    value={newDossierData.DEPART}
+                    onChange={(e) => handleNewDossierChange('DEPART', e.target.value.toUpperCase())}
+                    className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="ORY, CDG..."
+                    maxLength={3}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Arrivée
+                  </label>
+                  <input
+                    type="text"
+                    value={newDossierData.ARRIVEE}
+                    onChange={(e) => handleNewDossierChange('ARRIVEE', e.target.value.toUpperCase())}
+                    className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="ALG, TUN..."
+                    maxLength={3}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    LTA (AWB)
+                  </label>
+                  <input
+                    type="text"
+                    value={newDossierData.LTA}
+                    onChange={(e) => handleNewDossierChange('LTA', e.target.value)}
+                    className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="12412345675"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Type
+                  </label>
+                  <select
+                    value={newDossierData.TYPE}
+                    onChange={(e) => handleNewDossierChange('TYPE', e.target.value)}
+                    className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="Standard">Standard</option>
+                    <option value="Express">Express</option>
+                    <option value="Cargo">Cargo</option>
+                    <option value="Passenger">Passenger</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Vol
+                  </label>
+                  <input
+                    type="text"
+                    value={newDossierData.FLIGHT}
+                    onChange={(e) => handleNewDossierChange('FLIGHT', e.target.value.toUpperCase())}
+                    className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="AH1006"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Expéditeur
+                  </label>
+                  <input
+                    type="text"
+                    value={newDossierData.EXPEDITEUR}
+                    onChange={(e) => handleNewDossierChange('EXPEDITEUR', e.target.value)}
+                    className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Nom de l'expéditeur"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Destinataire
+                  </label>
+                  <input
+                    type="text"
+                    value={newDossierData.DESTINATAIRE}
+                    onChange={(e) => handleNewDossierChange('DESTINATAIRE', e.target.value)}
+                    className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Nom du destinataire"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Poids (kg)
+                  </label>
+                  <input
+                    type="number"
+                    value={newDossierData.POIDS}
+                    onChange={(e) => handleNewDossierChange('POIDS', e.target.value)}
+                    className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    min="0"
+                    step="0.1"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Pièces
+                  </label>
+                  <input
+                    type="number"
+                    value={newDossierData.PIECES}
+                    onChange={(e) => handleNewDossierChange('PIECES', e.target.value)}
+                    className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    min="1"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Statut
+                  </label>
+                  <select
+                    value={newDossierData.STATUS}
+                    onChange={(e) => handleNewDossierChange('STATUS', e.target.value)}
+                    className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="En cours">En cours</option>
+                    <option value="Terminé">Terminé</option>
+                    <option value="En attente">En attente</option>
+                    <option value="Annulé">Annulé</option>
+                    <option value="Réservé">Réservé</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Net Payable (€)
+                  </label>
+                  <input
+                    type="number"
+                    value={newDossierData.NETPAYABLE}
+                    onChange={(e) => handleNewDossierChange('NETPAYABLE', e.target.value)}
+                    className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200 dark:border-gray-700">
+                <button
+                  onClick={() => setShowNewDossierModal(false)}
+                  disabled={creatingDossier}
+                  className="px-6 py-2 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-400 dark:hover:bg-gray-500 transition-colors disabled:opacity-50"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={createNewDossier}
+                  disabled={creatingDossier}
+                  className="flex items-center space-x-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg transition-colors"
+                >
+                  {creatingDossier ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                  <span>{creatingDossier ? 'Création...' : 'Créer le dossier'}</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

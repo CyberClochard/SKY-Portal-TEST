@@ -117,7 +117,22 @@ const N8nIntegrationComponent: React.FC = () => {
     setError(null)
 
     try {
-      const webhookUrl = `${n8nConfig.baseUrl}/webhook/${workflowId}`
+      let webhookUrl: string
+      
+      // Use specific webhook URLs for different workflows
+      switch (workflowId) {
+        case 'new-reservation':
+          webhookUrl = 'https://n8n.skylogistics.fr/webhook-test/1ca86556-aa65-4bf9-8a26-5ef6b8d59d79'
+          break
+        case '57fbc81f-3166-4b75-bcc1-6badbe4ca8cc':
+          webhookUrl = `${n8nConfig.baseUrl}/webhook-test/${workflowId}`
+          break
+        case '1f5a8aaf-64cd-49a2-b56c-95d7554a17dc':
+          webhookUrl = `${n8nConfig.baseUrl}/webhook/${workflowId}`
+          break
+        default:
+          webhookUrl = `${n8nConfig.baseUrl}/webhook/${workflowId}`
+      }
       
       const webhookConfig: N8nWebhookConfig = {
         webhookUrl,
@@ -500,7 +515,7 @@ const N8nIntegrationComponent: React.FC = () => {
               <div className="text-sm">
                 <p className="text-blue-800 dark:text-blue-200 font-medium">Webhook configuré :</p>
                 <p className="text-blue-700 dark:text-blue-300 font-mono text-xs break-all">
-                  https://n8n.skylogistics.fr/webhook/new-reservation
+                  https://n8n.skylogistics.fr/webhook-test/1ca86556-aa65-4bf9-8a26-5ef6b8d59d79
                 </p>
               </div>
             </div>
@@ -1091,7 +1106,7 @@ const N8nIntegrationComponent: React.FC = () => {
         <div className="space-y-2 text-sm text-blue-800 dark:text-blue-200">
           <p>• <strong>Webhooks configurés :</strong></p>
           <div className="ml-4 space-y-1 font-mono text-xs bg-blue-100 dark:bg-blue-900/30 p-2 rounded">
-            <p>- /webhook/new-reservation (Nouvelle réservation)</p>
+            <p>- /webhook-test/1ca86556-aa65-4bf9-8a26-5ef6b8d59d79 (Nouvelle réservation)</p>
             <p>- /webhook-test/57fbc81f-3166-4b75-bcc1-6badbe4ca8cc (Traitement CASS)</p>
             <p>- /webhook/1f5a8aaf-64cd-49a2-b56c-95d7554a17dc (Recherche de vols)</p>
             <p>- /webhook/email-notification</p>
