@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+aimport React, { useState } from 'react'
 import { ThemeProvider } from './contexts/ThemeContext'
 import Sidebar from './components/Sidebar'
 import Dashboard from './components/Dashboard'
@@ -12,56 +12,10 @@ import BookingConfirmationTool from './components/BookingConfirmationTool'
 import Roadmap from './components/Roadmap'
 import Settings from './components/Settings'
 
-interface BookingConfirmationData {
-  // Document info
-  dossierNumber: string
-  ltaNumber: string
-  reservationDate: string
-  
-  // Deceased info
-  deceasedName: string
-  deceasedType: string
-  deceasedReference: string
-  specialRequirements: string
-  
-  // Client info
-  clientName: string
-  clientReference: string
-  clientEmail: string
-  clientPhone: string
-  
-  // Flight info
-  flightNumber: string
-  airline: string
-  aircraft: string
-  departureAirport: string
-  departureAirportName: string
-  departureDate: string
-  departureTime: string
-  arrivalAirport: string
-  arrivalAirportName: string
-  arrivalDate: string
-  arrivalTime: string
-  flightDuration: string
-  
-  // Delivery info
-  deliveryDate: string
-  deliveryTime: string
-  deliveryLocation: string
-  
-  // Special instructions
-  specialInstructions: string
-  
-  // Emergency contact
-  emergencyContactName: string
-  emergencyContactPhone: string
-}
-
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [bookingConfirmationData, setBookingConfirmationData] = useState<BookingConfirmationData | null>(null)
-
+ 
   // Get n8n base URL from localStorage for workflows
   const n8nBaseUrl = localStorage.getItem('n8n_base_url') || ''
 
