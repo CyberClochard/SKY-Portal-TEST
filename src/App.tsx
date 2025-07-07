@@ -33,6 +33,8 @@ function App() {
         return <AWBValidation />
       case 'booking-confirmation':
         return <BookingConfirmationTool />
+    }
+  }
 
   return (
     <ThemeProvider>
