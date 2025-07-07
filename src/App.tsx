@@ -8,6 +8,7 @@ import CassFileProcessor from './components/CassFileProcessor'
 import AWBValidation from './components/AWBValidation'
 import BookingConfirmationForm from './components/BookingConfirmationForm'
 import BookingConfirmationPreview from './components/BookingConfirmationPreview'
+import BookingConfirmationTool from './components/BookingConfirmationTool'
 import Roadmap from './components/Roadmap'
 import Settings from './components/Settings'
 
@@ -76,13 +77,8 @@ function App() {
         return <CassFileProcessor n8nBaseUrl={n8nBaseUrl} />
       case 'awb-validation':
         return <AWBValidation />
-      case 'booking-confirmation':
-        if (bookingConfirmationData) {
-          return (
-            <BookingConfirmationPreview 
-              data={bookingConfirmationData} 
-              onBack={() => setBookingConfirmationData(null)} 
-            />
+     case 'booking-confirmation':
+  return <BookingConfirmationTool />
           )
         } else {
           return (
