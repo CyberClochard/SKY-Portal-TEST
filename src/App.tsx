@@ -33,6 +33,12 @@ function App() {
         return <AWBValidation />
       case 'booking-confirmation':
         return <BookingConfirmationTool />
+      case 'roadmap':
+        return <Roadmap />
+      case 'settings':
+        return <Settings />
+      default:
+        return <Dashboard />
     }
   }
 
