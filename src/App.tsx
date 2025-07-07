@@ -31,16 +31,8 @@ function App() {
         return <CassFileProcessor n8nBaseUrl={n8nBaseUrl} />
       case 'awb-validation':
         return <AWBValidation />
-     case 'booking-confirmation':
-  return <BookingConfirmationTool />
-          )
-        } else {
-          return (
-            <BookingConfirmationForm 
-              onGenerate={setBookingConfirmationData} 
-            />
-          )
-        }
+      case 'booking-confirmation':
+        return <BookingConfirmationTool />
       case 'roadmap':
         return <Roadmap />
       case 'settings':
