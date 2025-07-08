@@ -329,8 +329,8 @@ const BookingForm: React.FC<BookingFormProps> = ({ onSubmit, initialData, isSubm
               </svg>
             ) : (
               <Save className="w-5 h-5" />
-              {isSubmitting ? 'Génération en cours...' : 'Générer le document'}
-            <span>Générer le document</span>
+            )}
+            <span>{isSubmitting ? 'Génération en cours...' : 'Générer le document'}</span>
           </button>
         </div>
       </form>
