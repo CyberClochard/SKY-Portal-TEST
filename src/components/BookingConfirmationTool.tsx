@@ -66,7 +66,7 @@ const BookingConfirmationTool: React.FC = () => {
       console.log('Envoi des données au webhook n8n:', webhookData);
 
       // Envoyer la requête au webhook n8n
-      const response = await fetch('https://n8n.skylogistics.fr/webhook-test/1af37111-e368-4545-a1e5-b07066c5dcaa', {
+      const response = await fetch('https://n8n.skylogistics.fr/webhook/1af37111-e368-4545-a1e5-b07066c5dcaa', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
