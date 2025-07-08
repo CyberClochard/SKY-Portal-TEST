@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User, Plane, FileText, Save, Calendar, MapPin } from 'lucide-react';
+import { User, Plane, FileText, Save, Calendar, MapPin, ToggleLeft, ToggleRight } from 'lucide-react';
 import { CaseData } from '../types/booking';
 
 interface BookingFormProps {
@@ -21,6 +21,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ onSubmit, initialData, isSubm
     return `${baseHour.toString().padStart(2, '0')}:30`
   }
 
+  const [hasConnection, setHasConnection] = useState(false)
   const [formData, setFormData] = useState<CaseData>(
     initialData || {
       dossierNumber: `DOS-${new Date().getFullYear()}-${Math.floor(Math.random() * 900000) + 100000}`,
@@ -76,20 +77,74 @@ const BookingForm: React.FC<BookingFormProps> = ({ onSubmit, initialData, isSubm
     }
   );
 
-  const handleFlightChange = (field: string, value: string, section?: string) => {
+  // Initialize connection flight data when toggle is activated
+  const initializeConnectionFlight = () => {
+    if (!hasConnection) {
+      // Add second flight with default connection data
+      const connectionDate = new Date(formData.flights[0].departure.date)
+      connectionDate.setHours(connectionDate.getHours() + 3) // 3 hours later for connection
+      
+      const finalDate = new Date(connectionDate)
+      finalDate.setHours(finalDate.getHours() + 2) // 2 hours for second flight
+      
+      setFormData(prev => ({
+        ...prev,
+        flights: [
+          {
+            ...prev.flights[0],
+            arrival: {
+              airport: 'Paris-Charles de Gaulle',
+              airportCode: 'CDG',
+              date: connectionDate.toISOString().split('T')[0],
+              time: `${(parseInt(prev.flights[0].departure.time.split(':')[0]) + 2).toString().padStart(2, '0')}:45`
+            }
+          },
+          {
+            flightNumber: 'AF1395',
+            airline: 'Air France',
+            departure: {
+              airport: 'Paris-Charles de Gaulle',
+              airportCode: 'CDG',
+              date: connectionDate.toISOString().split('T')[0],
+              time: `${(parseInt(prev.flights[0].departure.time.split(':')[0]) + 4).toString().padStart(2, '0')}:15`
+            },
+            arrival: {
+              airport: 'Alger - Houari Boumediene',
+              airportCode: 'ALG',
+              date: finalDate.toISOString().split('T')[0],
+              time: `${(parseInt(prev.flights[0].departure.time.split(':')[0]) + 6).toString().padStart(2, '0')}:30`
+            },
+            aircraft: 'Airbus A320',
+            duration: '2h 15m'
+          }
+        ]
+      }))
+    } else {
+      // Remove second flight
+      setFormData(prev => ({
+        ...prev,
+        flights: [prev.flights[0]]
+      }))
+    }
+    setHasConnection(!hasConnection)
+  }
+
+  const handleFlightChange = (flightIndex: number, field: string, value: string, section?: string) => {
     setFormData(prev => ({
       ...prev,
-      flights: [{
-        ...prev.flights[0],
-        ...(section ? {
-          [section]: {
-            ...prev.flights[0][section as keyof typeof prev.flights[0]],
+      flights: prev.flights.map((flight, index) => 
+        index === flightIndex ? {
+          ...flight,
+          ...(section ? {
+            [section]: {
+              ...flight[section as keyof typeof flight],
+              [field]: value
+            }
+          } : {
             [field]: value
-          }
-        } : {
-          [field]: value
-        })
-      }]
+          })
+        } : flight
+      )
     }));
   };
 
@@ -105,6 +160,55 @@ const BookingForm: React.FC<BookingFormProps> = ({ onSubmit, initialData, isSubm
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Prepare data with new variable structure for webhook
+    const webhookData = {
+      // Basic info
+      deceasedName: formData.deceased.name,
+      ltaNumber: formData.awbNumber,
+      connectionFlight: hasConnection,
+      
+      // Flight 1 data
+      airline1: formData.flights[0]?.airline || '',
+      flightNumber1: formData.flights[0]?.flightNumber || '',
+      departureAirport1: formData.flights[0]?.departure.airport || '',
+      departureAirportCode1: formData.flights[0]?.departure.airportCode || '',
+      departureDate1: formData.flights[0]?.departure.date || '',
+      departureTime1: formData.flights[0]?.departure.time || '',
+      
+      // Connection/Final destination data
+      ...(hasConnection && formData.flights.length > 1 ? {
+        // Connection airport (arrival of flight 1)
+        connectionAirport: formData.flights[0]?.arrival.airport || '',
+        connectionAirportCode: formData.flights[0]?.arrival.airportCode || '',
+        connectionDate1: formData.flights[0]?.arrival.date || '',
+        connectionTime1: formData.flights[0]?.arrival.time || '',
+        
+        // Flight 2 departure from connection
+        connectionDate2: formData.flights[1]?.departure.date || '',
+        connectionTime2: formData.flights[1]?.departure.time || '',
+        
+        // Flight 2 data
+        airline2: formData.flights[1]?.airline || '',
+        flightNumber2: formData.flights[1]?.flightNumber || '',
+        arrivalAirport2: formData.flights[1]?.arrival.airport || '',
+        arrivalAirportCode2: formData.flights[1]?.arrival.airportCode || '',
+        arrivalDate2: formData.flights[1]?.arrival.date || '',
+        arrivalTime2: formData.flights[1]?.arrival.time || '',
+      } : {
+        // Direct flight - final destination is flight 1 arrival
+        arrivalAirport2: formData.flights[0]?.arrival.airport || '',
+        arrivalAirportCode2: formData.flights[0]?.arrival.airportCode || '',
+        arrivalDate2: formData.flights[0]?.arrival.date || '',
+        arrivalTime2: formData.flights[0]?.arrival.time || '',
+      }),
+      
+      // Metadata
+      timestamp: new Date().toISOString(),
+      source: 'SkyLogistics Dashboard'
+    };
+    
+    console.log('Webhook data prepared:', webhookData);
     onSubmit(formData);
   };
 
@@ -162,172 +266,384 @@ const BookingForm: React.FC<BookingFormProps> = ({ onSubmit, initialData, isSubm
 
         {/* Informations de vol */}
         <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
-          <div className="flex items-center space-x-3 mb-6">
-            <Plane className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Informations de vol</h3>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                N° de vol *
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.flights[0].flightNumber}
-                onChange={(e) => handleFlightChange('flightNumber', e.target.value)}
-                className="w-full px-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors font-mono"
-                placeholder="AF1234"
-              />
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center space-x-3">
+              <Plane className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Informations de vol</h3>
             </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Compagnie aérienne *
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.flights[0].airline}
-                onChange={(e) => handleFlightChange('airline', e.target.value)}
-                className="w-full px-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-                placeholder="Air France"
-              />
+            
+            {/* Connection Toggle */}
+            <div className="flex items-center space-x-3">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Vol direct</span>
+              <button
+                type="button"
+                onClick={initializeConnectionFlight}
+                className={`relative inline-flex items-center h-6 rounded-full w-11 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                  hasConnection ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
+                }`}
+              >
+                <span
+                  className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform ${
+                    hasConnection ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Connexion</span>
             </div>
           </div>
 
-          {/* Itinéraire */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Départ */}
-            <div className="space-y-4">
-              <div className="flex items-center space-x-2 mb-4">
-                <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                <h4 className="font-medium text-gray-900 dark:text-white">Départ</h4>
-              </div>
+          {/* Flight 1 */}
+          <div className="space-y-6">
+            <div className="border-l-4 border-blue-500 pl-4">
+              <h4 className="text-md font-semibold text-gray-900 dark:text-white mb-4">
+                {hasConnection ? 'Vol 1 (Premier segment)' : 'Vol direct'}
+              </h4>
               
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Code *
+                    N° de vol *
                   </label>
                   <input
                     type="text"
                     required
-                    value={formData.flights[0].departure.airportCode}
-                    onChange={(e) => handleFlightChange('airportCode', e.target.value.toUpperCase(), 'departure')}
-                    className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-colors font-mono text-center"
-                    placeholder="CDG"
-                    maxLength={3}
+                    value={formData.flights[0]?.flightNumber || ''}
+                    onChange={(e) => handleFlightChange(0, 'flightNumber', e.target.value)}
+                    className="w-full px-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors font-mono"
+                    placeholder="AF1234"
                   />
                 </div>
-                <div className="sm:col-span-2">
+
+                <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Aéroport *
+                    Compagnie aérienne *
                   </label>
                   <input
                     type="text"
                     required
-                    value={formData.flights[0].departure.airport}
-                    onChange={(e) => handleFlightChange('airport', e.target.value, 'departure')}
-                    className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-colors"
-                    placeholder="Charles de Gaulle"
+                    value={formData.flights[0]?.airline || ''}
+                    onChange={(e) => handleFlightChange(0, 'airline', e.target.value)}
+                    className="w-full px-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                    placeholder="Air France"
                   />
                 </div>
               </div>
-              
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Date *
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={formData.flights[0].departure.date}
-                    onChange={(e) => handleFlightChange('date', e.target.value, 'departure')}
-                    className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-colors"
-                  />
+
+              {/* Flight 1 Route */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Departure */}
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2 mb-4">
+                    <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                    <h5 className="font-medium text-gray-900 dark:text-white">Départ</h5>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Code *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={formData.flights[0]?.departure.airportCode || ''}
+                        onChange={(e) => handleFlightChange(0, 'airportCode', e.target.value.toUpperCase(), 'departure')}
+                        className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-colors font-mono text-center"
+                        placeholder="CDG"
+                        maxLength={3}
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Aéroport *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={formData.flights[0]?.departure.airport || ''}
+                        onChange={(e) => handleFlightChange(0, 'airport', e.target.value, 'departure')}
+                        className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-colors"
+                        placeholder="Charles de Gaulle"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Date *
+                      </label>
+                      <input
+                        type="date"
+                        required
+                        value={formData.flights[0]?.departure.date || ''}
+                        onChange={(e) => handleFlightChange(0, 'date', e.target.value, 'departure')}
+                        className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Heure *
+                      </label>
+                      <input
+                        type="time"
+                        required
+                        value={formData.flights[0]?.departure.time || ''}
+                        onChange={(e) => handleFlightChange(0, 'time', e.target.value, 'departure')}
+                        className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-colors"
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Heure *
-                  </label>
-                  <input
-                    type="time"
-                    required
-                    value={formData.flights[0].departure.time}
-                    onChange={(e) => handleFlightChange('time', e.target.value, 'departure')}
-                    className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-colors"
-                  />
+
+                {/* Arrival (Connection or Final) */}
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2 mb-4">
+                    <div className={`w-3 h-3 rounded-full ${hasConnection ? 'bg-yellow-500' : 'bg-red-500'}`}></div>
+                    <h5 className="font-medium text-gray-900 dark:text-white">
+                      {hasConnection ? 'Connexion' : 'Arrivée'}
+                    </h5>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Code *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={formData.flights[0]?.arrival.airportCode || ''}
+                        onChange={(e) => handleFlightChange(0, 'airportCode', e.target.value.toUpperCase(), 'arrival')}
+                        className={`w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:border-transparent transition-colors font-mono text-center ${
+                          hasConnection ? 'focus:ring-yellow-500' : 'focus:ring-red-500'
+                        }`}
+                        placeholder="JFK"
+                        maxLength={3}
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Aéroport *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={formData.flights[0]?.arrival.airport || ''}
+                        onChange={(e) => handleFlightChange(0, 'airport', e.target.value, 'arrival')}
+                        className={`w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:border-transparent transition-colors ${
+                          hasConnection ? 'focus:ring-yellow-500' : 'focus:ring-red-500'
+                        }`}
+                        placeholder="John F. Kennedy"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Date *
+                      </label>
+                      <input
+                        type="date"
+                        required
+                        value={formData.flights[0]?.arrival.date || ''}
+                        onChange={(e) => handleFlightChange(0, 'date', e.target.value, 'arrival')}
+                        className={`w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:border-transparent transition-colors ${
+                          hasConnection ? 'focus:ring-yellow-500' : 'focus:ring-red-500'
+                        }`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Heure *
+                      </label>
+                      <input
+                        type="time"
+                        required
+                        value={formData.flights[0]?.arrival.time || ''}
+                        onChange={(e) => handleFlightChange(0, 'time', e.target.value, 'arrival')}
+                        className={`w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:border-transparent transition-colors ${
+                          hasConnection ? 'focus:ring-yellow-500' : 'focus:ring-red-500'
+                        }`}
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Arrivée */}
-            <div className="space-y-4">
-              <div className="flex items-center space-x-2 mb-4">
-                <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                <h4 className="font-medium text-gray-900 dark:text-white">Arrivée</h4>
+            {/* Flight 2 (Connection) */}
+            {hasConnection && formData.flights.length > 1 && (
+              <div className="border-l-4 border-purple-500 pl-4 mt-8">
+                <h4 className="text-md font-semibold text-gray-900 dark:text-white mb-4">
+                  Vol 2 (Segment de connexion)
+                </h4>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      N° de vol *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.flights[1]?.flightNumber || ''}
+                      onChange={(e) => handleFlightChange(1, 'flightNumber', e.target.value)}
+                      className="w-full px-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors font-mono"
+                      placeholder="AF1395"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Compagnie aérienne *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.flights[1]?.airline || ''}
+                      onChange={(e) => handleFlightChange(1, 'airline', e.target.value)}
+                      className="w-full px-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors"
+                      placeholder="Air France"
+                    />
+                  </div>
+                </div>
+
+                {/* Flight 2 Route */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  {/* Departure from Connection */}
+                  <div className="space-y-4">
+                    <div className="flex items-center space-x-2 mb-4">
+                      <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
+                      <h5 className="font-medium text-gray-900 dark:text-white">Départ (Connexion)</h5>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          Code *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={formData.flights[1]?.departure.airportCode || ''}
+                          onChange={(e) => handleFlightChange(1, 'airportCode', e.target.value.toUpperCase(), 'departure')}
+                          className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-colors font-mono text-center"
+                          placeholder="CDG"
+                          maxLength={3}
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          Aéroport *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={formData.flights[1]?.departure.airport || ''}
+                          onChange={(e) => handleFlightChange(1, 'airport', e.target.value, 'departure')}
+                          className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-colors"
+                          placeholder="Charles de Gaulle"
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          Date *
+                        </label>
+                        <input
+                          type="date"
+                          required
+                          value={formData.flights[1]?.departure.date || ''}
+                          onChange={(e) => handleFlightChange(1, 'date', e.target.value, 'departure')}
+                          className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-colors"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          Heure *
+                        </label>
+                        <input
+                          type="time"
+                          required
+                          value={formData.flights[1]?.departure.time || ''}
+                          onChange={(e) => handleFlightChange(1, 'time', e.target.value, 'departure')}
+                          className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-colors"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Final Arrival */}
+                  <div className="space-y-4">
+                    <div className="flex items-center space-x-2 mb-4">
+                      <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+                      <h5 className="font-medium text-gray-900 dark:text-white">Arrivée finale</h5>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          Code *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={formData.flights[1]?.arrival.airportCode || ''}
+                          onChange={(e) => handleFlightChange(1, 'airportCode', e.target.value.toUpperCase(), 'arrival')}
+                          className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors font-mono text-center"
+                          placeholder="ALG"
+                          maxLength={3}
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          Aéroport *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={formData.flights[1]?.arrival.airport || ''}
+                          onChange={(e) => handleFlightChange(1, 'airport', e.target.value, 'arrival')}
+                          className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
+                          placeholder="Alger - Houari Boumediene"
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          Date *
+                        </label>
+                        <input
+                          type="date"
+                          required
+                          value={formData.flights[1]?.arrival.date || ''}
+                          onChange={(e) => handleFlightChange(1, 'date', e.target.value, 'arrival')}
+                          className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          Heure *
+                        </label>
+                        <input
+                          type="time"
+                          required
+                          value={formData.flights[1]?.arrival.time || ''}
+                          onChange={(e) => handleFlightChange(1, 'time', e.target.value, 'arrival')}
+                          className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Code *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.flights[0].arrival.airportCode}
-                    onChange={(e) => handleFlightChange('airportCode', e.target.value.toUpperCase(), 'arrival')}
-                    className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors font-mono text-center"
-                    placeholder="JFK"
-                    maxLength={3}
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Aéroport *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.flights[0].arrival.airport}
-                    onChange={(e) => handleFlightChange('airport', e.target.value, 'arrival')}
-                    className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
-                    placeholder="John F. Kennedy"
-                  />
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Date *
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={formData.flights[0].arrival.date}
-                    onChange={(e) => handleFlightChange('date', e.target.value, 'arrival')}
-                    className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Heure *
-                  </label>
-                  <input
-                    type="time"
-                    required
-                    value={formData.flights[0].arrival.time}
-                    onChange={(e) => handleFlightChange('time', e.target.value, 'arrival')}
-                    className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
-                  />
-                </div>
-              </div>
-            </div>
+            )}
           </div>
         </div>
 

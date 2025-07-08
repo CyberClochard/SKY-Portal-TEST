@@ -20,34 +20,54 @@ const BookingConfirmationTool: React.FC = () => {
     setDocumentUrl(null)
 
     try {
-      // Préparer les données pour le webhook n8n
+      // Préparer les données pour le webhook n8n avec le nouveau format
+      const hasConnection = data.flights.length > 1
+      
       const webhookData = {
-        // Informations du défunt
+        // Basic info
         deceasedName: data.deceased.name,
-        
-        // Informations LTA
         ltaNumber: data.awbNumber,
+        connectionFlight: hasConnection,
         
-        // Informations de vol
-        flightNumber: data.flights[0]?.flightNumber || '',
-        airline: data.flights[0]?.airline || '',
+        // Flight 1 data
+        airline1: data.flights[0]?.airline || '',
+        flightNumber1: data.flights[0]?.flightNumber || '',
+        departureAirport1: data.flights[0]?.departure.airport || '',
+        departureAirportCode1: data.flights[0]?.departure.airportCode || '',
+        departureDate1: data.flights[0]?.departure.date || '',
+        departureTime1: data.flights[0]?.departure.time || '',
         
-        // Départ
-        departureAirport: data.flights[0]?.departure.airport || '',
-        departureAirportCode: data.flights[0]?.departure.airportCode || '',
-        departureDate: data.flights[0]?.departure.date || '',
-        departureTime: data.flights[0]?.departure.time || '',
+        // Connection/Final destination data
+        ...(hasConnection ? {
+          // Connection airport (arrival of flight 1)
+          connectionAirport: data.flights[0]?.arrival.airport || '',
+          connectionAirportCode: data.flights[0]?.arrival.airportCode || '',
+          connectionDate1: data.flights[0]?.arrival.date || '',
+          connectionTime1: data.flights[0]?.arrival.time || '',
+          
+          // Flight 2 departure from connection
+          connectionDate2: data.flights[1]?.departure.date || '',
+          connectionTime2: data.flights[1]?.departure.time || '',
+          
+          // Flight 2 data
+          airline2: data.flights[1]?.airline || '',
+          flightNumber2: data.flights[1]?.flightNumber || '',
+          arrivalAirport2: data.flights[1]?.arrival.airport || '',
+          arrivalAirportCode2: data.flights[1]?.arrival.airportCode || '',
+          arrivalDate2: data.flights[1]?.arrival.date || '',
+          arrivalTime2: data.flights[1]?.arrival.time || '',
+        } : {
+          // Direct flight - final destination is flight 1 arrival
+          arrivalAirport2: data.flights[0]?.arrival.airport || '',
+          arrivalAirportCode2: data.flights[0]?.arrival.airportCode || '',
+          arrivalDate2: data.flights[0]?.arrival.date || '',
+          arrivalTime2: data.flights[0]?.arrival.time || '',
+        }),
         
-        // Arrivée
-        arrivalAirport: data.flights[0]?.arrival.airport || '',
-        arrivalAirportCode: data.flights[0]?.arrival.airportCode || '',
-        arrivalDate: data.flights[0]?.arrival.date || '',
-        arrivalTime: data.flights[0]?.arrival.time || '',
-        
-        // Métadonnées
+        // Metadata
         timestamp: new Date().toISOString(),
         source: 'SkyLogistics Dashboard'
-      };
+      }
 
       console.log('Envoi des données au webhook n8n:', webhookData);
 
