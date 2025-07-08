@@ -9,15 +9,15 @@ const BookingConfirmationTool: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
+  const [htmlContent, setHtmlContent] = useState<string | null>(null)
+  const [documentUrl, setDocumentUrl] = useState<string | null>(null)
 
   const handleFormSubmit = async (data: CaseData) => {
     setIsGenerating(true);
     setError(null);
     setSuccess(null);
-    setPdfUrl(null);
-    setPdfBlob(null);
+    setHtmlContent(null)
+    setDocumentUrl(null)
 
     try {
       // Préparer les données pour le webhook n8n
@@ -71,23 +71,20 @@ const BookingConfirmationTool: React.FC = () => {
       const contentType = response.headers.get('content-type') || '';
       console.log('Type de contenu de la réponse:', contentType);
 
-      // Traiter d'abord comme PDF binaire
-      if (contentType.includes('application/pdf') || contentType.includes('application/octet-stream')) {
-        // Réponse PDF directe
-        console.log('Réception d\'un PDF direct');
-        const blob = await response.blob();
-        console.log('Taille du blob PDF:', blob.size, 'bytes');
-        console.log('Type du blob:', blob.type);
+      // Traiter comme HTML ou JSON
+      if (contentType.includes('text/html')) {
+        // Réponse HTML directe
+        console.log('Réception d\'un HTML direct')
+        const htmlText = await response.text()
+        console.log('Taille du HTML:', htmlText.length, 'caractères')
         
-        if (blob.size > 0) {
-          const objectUrl = URL.createObjectURL(blob);
-          setPdfBlob(blob);
-          setPdfUrl(objectUrl);
-          setCurrentData(data);
-          setShowForm(false);
-          setSuccess('Document PDF généré avec succès');
+        if (htmlText.length > 0) {
+          setHtmlContent(htmlText)
+          setCurrentData(data)
+          setShowForm(false)
+          setSuccess('Document HTML généré avec succès')
         } else {
-          throw new Error('Le PDF reçu est vide');
+          throw new Error('Le HTML reçu est vide')
         }
       } else if (contentType.includes('application/json')) {
         // Réponse JSON
@@ -104,120 +101,63 @@ const BookingConfirmationTool: React.FC = () => {
         
         console.log('Résultat JSON du webhook:', result);
         
-        if (result.pdfUrl) {
-          console.log('URL PDF reçue:', result.pdfUrl);
+        if (result.html) {
+          // HTML dans la réponse JSON
+          console.log('HTML reçu dans JSON')
+          setHtmlContent(result.html)
+          setCurrentData(data)
+          setShowForm(false)
+          setSuccess('Document HTML généré avec succès')
+        } else if (result.htmlUrl) {
+          console.log('URL HTML reçue:', result.htmlUrl)
           
-          // Vérifier si l'URL est accessible
+          // Vérifier si l'URL HTML est accessible
           try {
-            const pdfResponse = await fetch(result.pdfUrl);
-            if (pdfResponse.ok) {
-              const pdfBlob = await pdfResponse.blob();
-              const objectUrl = URL.createObjectURL(pdfBlob);
-              setPdfBlob(pdfBlob);
-              setPdfUrl(objectUrl);
+            const htmlResponse = await fetch(result.htmlUrl)
+            if (htmlResponse.ok) {
+              const htmlText = await htmlResponse.text()
+              setHtmlContent(htmlText)
               setCurrentData(data);
               setShowForm(false);
-              setSuccess('Document PDF généré avec succès');
+              setSuccess('Document HTML généré avec succès')
             } else {
-              throw new Error(`PDF non accessible à l'URL: ${result.pdfUrl}`);
+              throw new Error(`HTML non accessible à l'URL: ${result.htmlUrl}`)
             }
           } catch (urlError) {
-            console.error('Erreur d\'accès à l\'URL PDF:', urlError);
+            console.error('Erreur d\'accès à l\'URL HTML:', urlError)
             // Fallback: utiliser l'URL directement
-            setPdfUrl(result.pdfUrl);
+            setDocumentUrl(result.htmlUrl)
             setCurrentData(data);
             setShowForm(false);
-            setSuccess('Document PDF généré avec succès (URL directe)');
-          }
-        } else if (result.pdfData) {
-          // PDF encodé en base64
-          console.log('PDF en base64 reçu');
-          try {
-            // Nettoyer les données base64 (enlever les préfixes si présents)
-            let base64Data = result.pdfData;
-            if (base64Data.startsWith('data:application/pdf;base64,')) {
-              base64Data = base64Data.substring(28);
-            }
-            
-            const binaryString = atob(base64Data);
-            const bytes = new Uint8Array(binaryString.length);
-            for (let i = 0; i < binaryString.length; i++) {
-              bytes[i] = binaryString.charCodeAt(i);
-            }
-            const blob = new Blob([bytes], { type: 'application/pdf' });
-            console.log('Blob PDF créé depuis base64:', blob.size, 'bytes');
-            
-            if (blob.size > 0) {
-              const objectUrl = URL.createObjectURL(blob);
-              setPdfBlob(blob);
-              setPdfUrl(objectUrl);
-              setCurrentData(data);
-              setShowForm(false);
-              setSuccess('Document PDF généré avec succès');
-            } else {
-              throw new Error('Le PDF décodé est vide');
-            }
-          } catch (base64Error) {
-            console.error('Erreur de décodage base64:', base64Error);
-            throw new Error('Erreur lors du décodage du PDF base64');
-          }
-        } else if (result.pdf) {
-          // Autre format de PDF dans la réponse JSON
-          console.log('PDF trouvé dans result.pdf');
-          if (typeof result.pdf === 'string') {
-            // Traiter comme base64
-            try {
-              const binaryString = atob(result.pdf);
-              const bytes = new Uint8Array(binaryString.length);
-              for (let i = 0; i < binaryString.length; i++) {
-                bytes[i] = binaryString.charCodeAt(i);
-              }
-              const blob = new Blob([bytes], { type: 'application/pdf' });
-              const objectUrl = URL.createObjectURL(blob);
-              setPdfBlob(blob);
-              setPdfUrl(objectUrl);
-              setCurrentData(data);
-              setShowForm(false);
-              setSuccess('Document PDF généré avec succès');
-            } catch (pdfError) {
-              console.error('Erreur de traitement PDF:', pdfError);
-              throw new Error('Erreur lors du traitement du PDF');
-            }
+            setSuccess('Document HTML généré avec succès (URL directe)')
           }
         } else if (result.success !== false) {
-          // Succès mais pas de PDF
-          console.warn('Succès mais aucun PDF trouvé dans la réponse:', result);
+          // Succès mais pas de HTML
+          console.warn('Succès mais aucun HTML trouvé dans la réponse:', result)
           setCurrentData(data);
           setShowForm(false);
-          setError(result.message || 'Document traité avec succès, mais aucun PDF reçu. Vérifiez la configuration du webhook n8n.');
+          setError(result.message || 'Document traité avec succès, mais aucun HTML reçu. Vérifiez la configuration du webhook n8n.')
         } else {
-          throw new Error(result.message || 'Erreur lors de la génération du PDF');
+          throw new Error(result.message || 'Erreur lors de la génération du document')
         }
       } else {
-        // Type de contenu inconnu - essayer de traiter comme PDF binaire
-        console.log('Type de contenu inconnu:', contentType, '- tentative de traitement comme PDF');
-        const blob = await response.blob();
-        console.log('Blob créé:', blob.size, 'bytes, type:', blob.type);
+        // Type de contenu inconnu - essayer de traiter comme HTML
+        console.log('Type de contenu inconnu:', contentType, '- tentative de traitement comme HTML')
+        const htmlText = await response.text()
+        console.log('Contenu reçu:', htmlText.length, 'caractères')
         
-        if (blob.size > 0) {
-          // Forcer le type MIME à PDF
-          const pdfBlob = new Blob([blob], { type: 'application/pdf' });
-          const objectUrl = URL.createObjectURL(pdfBlob);
-          setPdfBlob(pdfBlob);
-          setPdfUrl(objectUrl);
+        if (htmlText.length > 0) {
+          setHtmlContent(htmlText)
           setCurrentData(data);
           setShowForm(false);
-          setSuccess('Document généré avec succès (type de contenu détecté automatiquement)');
+          setSuccess('Document HTML généré avec succès (type de contenu détecté automatiquement)')
         } else {
-          // Essayer de lire comme texte pour debug
-          const responseText = await response.text();
-          console.log('Réponse texte:', responseText.substring(0, 200));
-          throw new Error(`Réponse vide du webhook. Type: ${contentType}, Contenu: ${responseText.substring(0, 100)}`);
+          throw new Error(`Réponse vide du webhook. Type: ${contentType}, Contenu: ${htmlText.substring(0, 100)}`)
         }
       }
 
     } catch (err) {
-      console.error('Erreur lors de la génération du PDF:', err);
+      console.error('Erreur lors de la génération du document:', err)
       const errorMessage = err instanceof Error ? err.message : 'Erreur inconnue';
       setError(`Erreur lors de la génération: ${errorMessage}`);
     } finally {
@@ -229,70 +169,61 @@ const BookingConfirmationTool: React.FC = () => {
     setShowForm(true);
     setError(null);
     setSuccess(null);
-    
-    // Nettoyer les URLs d'objet pour éviter les fuites mémoire
-    if (pdfUrl && pdfUrl.startsWith('blob:')) {
-      URL.revokeObjectURL(pdfUrl);
-    }
-    setPdfUrl(null);
-    setPdfBlob(null);
+    setHtmlContent(null)
+    setDocumentUrl(null)
   };
 
-  const handleDownloadPdf = () => {
-    if (pdfBlob && currentData) {
-      // Utiliser le blob pour le téléchargement
+  const handleDownloadHtml = () => {
+    if (htmlContent && currentData) {
+      // Créer un blob HTML pour le téléchargement
+      const blob = new Blob([htmlContent], { type: 'text/html' })
       const link = document.createElement('a');
-      const url = URL.createObjectURL(pdfBlob);
+      const url = URL.createObjectURL(blob)
       link.href = url;
-      link.download = `confirmation-transport-${currentData.deceased.name.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.pdf`;
+      link.download = `confirmation-transport-${currentData.deceased.name.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.html`
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-    } else if (pdfUrl) {
+    } else if (documentUrl) {
       // Fallback avec l'URL
       const link = document.createElement('a');
-      link.href = pdfUrl;
-      link.download = `confirmation-transport-${currentData?.deceased.name.replace(/\s+/g, '-') || 'document'}-${new Date().toISOString().split('T')[0]}.pdf`;
+      link.href = documentUrl
+      link.download = `confirmation-transport-${currentData?.deceased.name.replace(/\s+/g, '-') || 'document'}-${new Date().toISOString().split('T')[0]}.html`
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
     }
   };
 
-  const handlePrintPdf = () => {
-    if (pdfUrl) {
-      const printWindow = window.open(pdfUrl, '_blank', 'width=800,height=600');
+  const handlePrintHtml = () => {
+    if (htmlContent) {
+      // Créer une nouvelle fenêtre avec le contenu HTML
+      const printWindow = window.open('', '_blank', 'width=800,height=600')
+      if (printWindow) {
+        printWindow.document.write(htmlContent)
+        printWindow.document.close()
+        
+        printWindow.onload = () => {
+          setTimeout(() => {
+            printWindow.focus()
+            printWindow.print()
+          }, 500)
+        }
+      }
+    } else if (documentUrl) {
+      // Ouvrir l'URL dans une nouvelle fenêtre pour impression
+      const printWindow = window.open(documentUrl, '_blank', 'width=800,height=600')
       if (printWindow) {
         printWindow.onload = () => {
           setTimeout(() => {
-            printWindow.focus();
-            printWindow.print();
-          }, 500);
-        };
-        
-        // Fallback si onload ne fonctionne pas
-        setTimeout(() => {
-          if (printWindow && !printWindow.closed) {
-            printWindow.focus();
-            printWindow.print();
-          }
-        }, 1000);
-      } else {
-        // Si le popup est bloqué, essayer d'ouvrir dans le même onglet
-        window.open(pdfUrl, '_self');
+            printWindow.focus()
+            printWindow.print()
+          }, 500)
+        }
       }
     }
   };
-
-  // Nettoyer les URLs d'objet au démontage du composant
-  React.useEffect(() => {
-    return () => {
-      if (pdfUrl && pdfUrl.startsWith('blob:')) {
-        URL.revokeObjectURL(pdfUrl);
-      }
-    };
-  }, [pdfUrl]);
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900 p-4 print:p-0 print:bg-white">
@@ -355,10 +286,10 @@ const BookingConfirmationTool: React.FC = () => {
                     <span>Modifier</span>
                   </button>
                   
-                  {pdfUrl && (
+                  {(htmlContent || documentUrl) && (
                     <>
                       <button 
-                        onClick={handleDownloadPdf}
+                        onClick={handleDownloadHtml}
                         className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
                       >
                         <Download className="w-4 h-4" />
@@ -366,7 +297,7 @@ const BookingConfirmationTool: React.FC = () => {
                       </button>
                       
                       <button 
-                        onClick={handlePrintPdf}
+                        onClick={handlePrintHtml}
                         className="flex items-center space-x-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg transition-colors"
                       >
                         <Printer className="w-4 h-4" />
@@ -379,14 +310,37 @@ const BookingConfirmationTool: React.FC = () => {
             </div>
           </div>
 
-          {/* PDF Viewer */}
-          {pdfUrl ? (
+          {/* HTML Viewer */}
+          {htmlContent ? (
             <div className="max-w-6xl mx-auto">
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden border border-gray-200 dark:border-gray-700">
                 <div className="bg-gray-50 dark:bg-gray-900 px-6 py-3 border-b border-gray-200 dark:border-gray-700">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-medium text-gray-900 dark:text-white">
-                      Aperçu du document PDF
+                      Aperçu du document HTML
+                    </h3>
+                    <div className="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-400">
+                      <CheckCircle className="w-4 h-4 text-green-500" />
+                      <span>Document prêt</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="relative">
+                  <div 
+                    className="w-full min-h-[800px] p-6 bg-white"
+                    dangerouslySetInnerHTML={{ __html: htmlContent }}
+                  />
+                </div>
+              </div>
+            </div>
+          ) : documentUrl ? (
+            <div className="max-w-6xl mx-auto">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+                <div className="bg-gray-50 dark:bg-gray-900 px-6 py-3 border-b border-gray-200 dark:border-gray-700">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-medium text-gray-900 dark:text-white">
+                      Document externe
                     </h3>
                     <div className="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-400">
                       <CheckCircle className="w-4 h-4 text-green-500" />
@@ -397,20 +351,12 @@ const BookingConfirmationTool: React.FC = () => {
                 
                 <div className="relative">
                   <iframe
-                    src={pdfUrl}
+                    src={documentUrl}
                     className="w-full h-[800px] border-0"
                     title="Confirmation de Transport Funéraire"
-                    onLoad={() => console.log('PDF iframe chargé')}
-                    onError={() => console.error('Erreur de chargement du PDF iframe')}
+                    onLoad={() => console.log('Document iframe chargé')}
+                    onError={() => console.error('Erreur de chargement du document iframe')}
                   />
-                  
-                  {/* Overlay de chargement */}
-                  <div className="absolute inset-0 bg-gray-100 dark:bg-gray-800 flex items-center justify-center pointer-events-none opacity-0 transition-opacity duration-300" id="pdf-loading">
-                    <div className="text-center">
-                      <RefreshCw className="w-8 h-8 text-gray-400 animate-spin mx-auto mb-2" />
-                      <p className="text-gray-600 dark:text-gray-400">Chargement du PDF...</p>
-                    </div>
-                  </div>
                 </div>
               </div>
             </div>
@@ -425,8 +371,8 @@ const BookingConfirmationTool: React.FC = () => {
                 </h3>
                 <p className="text-gray-600 dark:text-gray-400">
                   {isGenerating 
-                    ? 'Le PDF est en cours de génération par le workflow n8n.'
-                    : 'Le PDF sera affiché ici une fois généré avec succès.'
+                    ? 'Le document HTML est en cours de génération par le workflow n8n.'
+                    : 'Le document HTML sera affiché ici une fois généré avec succès.'
                   }
                 </p>
                 {isGenerating && (
@@ -446,9 +392,8 @@ const BookingConfirmationTool: React.FC = () => {
                   Informations de débogage
                 </summary>
                 <div className="text-sm text-gray-600 dark:text-gray-400 space-y-2">
-                  <p><strong>PDF URL:</strong> {pdfUrl || 'Aucune'}</p>
-                  <p><strong>PDF Blob:</strong> {pdfBlob ? `${pdfBlob.size} bytes` : 'Aucun'}</p>
-                  <p><strong>PDF Blob Type:</strong> {pdfBlob?.type || 'N/A'}</p>
+                  <p><strong>HTML Content:</strong> {htmlContent ? `${htmlContent.length} caractères` : 'Aucun'}</p>
+                  <p><strong>Document URL:</strong> {documentUrl || 'Aucune'}</p>
                   <p><strong>Données actuelles:</strong> {currentData ? 'Présentes' : 'Aucunes'}</p>
                   <p><strong>État génération:</strong> {isGenerating ? 'En cours' : 'Terminé'}</p>
                   <p><strong>Erreur:</strong> {error || 'Aucune'}</p>
