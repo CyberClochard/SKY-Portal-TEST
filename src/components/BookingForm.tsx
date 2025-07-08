@@ -9,51 +9,67 @@ interface BookingFormProps {
 }
 
 const BookingForm: React.FC<BookingFormProps> = ({ onSubmit, initialData, isSubmitting = false }) => {
+  // Générer une date par défaut (dans 3 jours)
+  const getDefaultDate = () => {
+    const date = new Date()
+    date.setDate(date.getDate() + 3)
+    return date.toISOString().split('T')[0]
+  }
+
+  // Générer une heure par défaut
+  const getDefaultTime = (baseHour: number) => {
+    return `${baseHour.toString().padStart(2, '0')}:30`
+  }
+
   const [formData, setFormData] = useState<CaseData>(
     initialData || {
-      dossierNumber: '',
-      awbNumber: '',
-      clientName: '',
+      dossierNumber: `DOS-${new Date().getFullYear()}-${Math.floor(Math.random() * 900000) + 100000}`,
+      awbNumber: `12412345${Math.floor(Math.random() * 90) + 10}${Math.floor(Math.random() * 10)}`,
+      clientName: 'Pompes Funèbres Martin & Associés',
       clientContact: {
-        email: '',
-        phone: ''
+        email: 'contact@pf-martin.fr',
+        phone: '+33 1 42 85 67 89'
       },
-      bookingReference: '',
+      bookingReference: `REF-${new Date().getFullYear()}-${Math.floor(Math.random() * 9000) + 1000}`,
       bookingDate: new Date().toISOString().split('T')[0],
       flights: [{
-        flightNumber: '',
-        airline: '',
+        flightNumber: 'AH1006',
+        airline: 'Air Algérie',
         departure: {
-          airport: '',
-          airportCode: '',
-          date: '',
-          time: ''
+          airport: 'Paris-Orly',
+          airportCode: 'ORY',
+          date: getDefaultDate(),
+          time: getDefaultTime(14)
         },
         arrival: {
-          airport: '',
-          airportCode: '',
-          date: '',
-          time: ''
+          airport: 'Alger - Houari Boumediene',
+          airportCode: 'ALG',
+          date: getDefaultDate(),
+          time: getDefaultTime(16)
         },
-        aircraft: '',
-        duration: ''
+        aircraft: 'Boeing 737-800',
+        duration: '2h 30m'
       }],
       deceased: {
         id: '1',
-        name: '',
+        name: 'Ahmed Ben Mohamed',
         type: 'HUM',
-        ticketNumber: '',
-        specialRequirements: ''
+        ticketNumber: `TKT-${Math.floor(Math.random() * 900000) + 100000}`,
+        specialRequirements: 'Transport réfrigéré requis - Manipulation avec précaution'
       },
       deliveryInfo: {
-        date: '',
-        time: '',
-        location: ''
+        date: (() => {
+          const deliveryDate = new Date()
+          deliveryDate.setDate(deliveryDate.getDate() + 4)
+          return deliveryDate.toISOString().split('T')[0]
+        })(),
+        time: '10:00',
+        location: 'Funérarium Central, 123 Avenue de la République, 16000 Alger'
       },
-      specialInstructions: '',
+      specialInstructions: 'Coordonner avec l\'équipe de réception à l\'arrivée. Contact local requis 2h avant l\'atterrissage.',
       emergencyContact: {
-        name: '',
-        phone: ''
+        name: 'Fatima Ben Mohamed',
+        phone: '+213 21 45 67 89'
       },
       createdAt: new Date().toISOString(),
       status: 'confirmed'
