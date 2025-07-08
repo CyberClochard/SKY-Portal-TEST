@@ -192,7 +192,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ onSubmit, initialData, isSubm
         arrivalAirportCode2: formData.flights[1]?.arrival.airportCode || '',
         arrivalDate2: formData.flights[1]?.arrival.date || '',
         arrivalTime2: formData.flights[1]?.arrival.time || '',
-      }),
+      } : {}),
       
       // Metadata
       timestamp: new Date().toISOString(),
