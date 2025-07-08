@@ -29,40 +29,30 @@ const BookingConfirmationTool: React.FC = () => {
         ltaNumber: data.awbNumber,
         connectionFlight: hasConnection,
         
-        // Airlines
+        // Flight 1 - Always present
         airline1: data.flights[0]?.airline || '',
-        ...(hasConnection ? {
-          airline2: data.flights[1]?.airline || '',
-        } : {}),
-        
-        // Flight 1 (replaces original single flight variables)
         flightNumber1: data.flights[0]?.flightNumber || '',
         departureAirport1: data.flights[0]?.departure.airport || '',
         departureAirportCode1: data.flights[0]?.departure.airportCode || '',
         departureDate1: data.flights[0]?.departure.date || '',
         departureTime1: data.flights[0]?.departure.time || '',
+        arrivalAirport1: data.flights[0]?.arrival.airport || '',
+        arrivalAirportCode1: data.flights[0]?.arrival.airportCode || '',
+        arrivalDate1: data.flights[0]?.arrival.date || '',
+        arrivalTime1: data.flights[0]?.arrival.time || '',
         
+        // Flight 2 - Only when connection is enabled
         ...(hasConnection ? {
-          // Connection Airport
-          connectionAirport: data.flights[0]?.arrival.airport || '',
-          connectionAirportCode: data.flights[0]?.arrival.airportCode || '',
-          connectionDate1: data.flights[0]?.arrival.date || '',
-          connectionTime1: data.flights[0]?.arrival.time || '',
-          connectionDate2: data.flights[1]?.departure.date || '',
-          connectionTime2: data.flights[1]?.departure.time || '',
-          
-          // Flight 2
+          airline2: data.flights[1]?.airline || '',
           flightNumber2: data.flights[1]?.flightNumber || '',
+          departureAirport2: data.flights[1]?.departure.airport || '',
+          departureAirportCode2: data.flights[1]?.departure.airportCode || '',
+          departureDate2: data.flights[1]?.departure.date || '',
+          departureTime2: data.flights[1]?.departure.time || '',
           arrivalAirport2: data.flights[1]?.arrival.airport || '',
           arrivalAirportCode2: data.flights[1]?.arrival.airportCode || '',
           arrivalDate2: data.flights[1]?.arrival.date || '',
           arrivalTime2: data.flights[1]?.arrival.time || '',
-        } : {
-          // Direct flight - final destination is flight 1 arrival (no connection variables)
-          arrivalAirport2: data.flights[0]?.arrival.airport || '',
-          arrivalAirportCode2: data.flights[0]?.arrival.airportCode || '',
-          arrivalDate2: data.flights[0]?.arrival.date || '',
-          arrivalTime2: data.flights[0]?.arrival.time || '',
         }),
         
         // Metadata
