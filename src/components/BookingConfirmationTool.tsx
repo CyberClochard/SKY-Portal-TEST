@@ -23,6 +23,20 @@ const BookingConfirmationTool: React.FC = () => {
       // Préparer les données pour le webhook n8n avec le nouveau format
       const hasConnection = data.flights.length > 1
       
+      // Prepare flight 2 data conditionally
+      const flight2Data = hasConnection ? {
+        airline2: data.flights[1]?.airline || '',
+        flightNumber2: data.flights[1]?.flightNumber || '',
+        departureAirport2: data.flights[1]?.departure.airport || '',
+        departureAirportCode2: data.flights[1]?.departure.airportCode || '',
+        departureDate2: data.flights[1]?.departure.date || '',
+        departureTime2: data.flights[1]?.departure.time || '',
+        arrivalAirport2: data.flights[1]?.arrival.airport || '',
+        arrivalAirportCode2: data.flights[1]?.arrival.airportCode || '',
+        arrivalDate2: data.flights[1]?.arrival.date || '',
+        arrivalTime2: data.flights[1]?.arrival.time || '',
+      } : {};
+
       const webhookData = {
         // Basic info
         deceasedName: data.deceased.name,
@@ -42,18 +56,7 @@ const BookingConfirmationTool: React.FC = () => {
         arrivalTime1: data.flights[0]?.arrival.time || '',
         
         // Flight 2 - Only when connection is enabled
-        ...(hasConnection ? {
-          airline2: data.flights[1]?.airline || '',
-          flightNumber2: data.flights[1]?.flightNumber || '',
-          departureAirport2: data.flights[1]?.departure.airport || '',
-          departureAirportCode2: data.flights[1]?.departure.airportCode || '',
-          departureDate2: data.flights[1]?.departure.date || '',
-          departureTime2: data.flights[1]?.departure.time || '',
-          arrivalAirport2: data.flights[1]?.arrival.airport || '',
-          arrivalAirportCode2: data.flights[1]?.arrival.airportCode || '',
-          arrivalDate2: data.flights[1]?.arrival.date || '',
-          arrivalTime2: data.flights[1]?.arrival.time || '',
-        }),
+        ...flight2Data,
         
         // Metadata
         timestamp: new Date().toISOString(),
