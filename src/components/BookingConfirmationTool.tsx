@@ -29,35 +29,36 @@ const BookingConfirmationTool: React.FC = () => {
         ltaNumber: data.awbNumber,
         connectionFlight: hasConnection,
         
-        // Flight 1 data
+        // Airlines
         airline1: data.flights[0]?.airline || '',
+        ...(hasConnection ? {
+          airline2: data.flights[1]?.airline || '',
+        } : {}),
+        
+        // Flight 1 (replaces original single flight variables)
         flightNumber1: data.flights[0]?.flightNumber || '',
         departureAirport1: data.flights[0]?.departure.airport || '',
         departureAirportCode1: data.flights[0]?.departure.airportCode || '',
         departureDate1: data.flights[0]?.departure.date || '',
         departureTime1: data.flights[0]?.departure.time || '',
         
-        // Connection/Final destination data
         ...(hasConnection ? {
-          // Connection airport (arrival of flight 1)
+          // Connection Airport
           connectionAirport: data.flights[0]?.arrival.airport || '',
           connectionAirportCode: data.flights[0]?.arrival.airportCode || '',
           connectionDate1: data.flights[0]?.arrival.date || '',
           connectionTime1: data.flights[0]?.arrival.time || '',
-          
-          // Flight 2 departure from connection
           connectionDate2: data.flights[1]?.departure.date || '',
           connectionTime2: data.flights[1]?.departure.time || '',
           
-          // Flight 2 data
-          airline2: data.flights[1]?.airline || '',
+          // Flight 2
           flightNumber2: data.flights[1]?.flightNumber || '',
           arrivalAirport2: data.flights[1]?.arrival.airport || '',
           arrivalAirportCode2: data.flights[1]?.arrival.airportCode || '',
           arrivalDate2: data.flights[1]?.arrival.date || '',
           arrivalTime2: data.flights[1]?.arrival.time || '',
         } : {
-          // Direct flight - final destination is flight 1 arrival
+          // Direct flight - final destination is flight 1 arrival (no connection variables)
           arrivalAirport2: data.flights[0]?.arrival.airport || '',
           arrivalAirportCode2: data.flights[0]?.arrival.airportCode || '',
           arrivalDate2: data.flights[0]?.arrival.date || '',

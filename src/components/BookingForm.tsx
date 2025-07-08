@@ -168,35 +168,36 @@ const BookingForm: React.FC<BookingFormProps> = ({ onSubmit, initialData, isSubm
       ltaNumber: formData.awbNumber,
       connectionFlight: hasConnection,
       
-      // Flight 1 data
+      // Airlines
       airline1: formData.flights[0]?.airline || '',
+      ...(hasConnection && formData.flights.length > 1 ? {
+        airline2: formData.flights[1]?.airline || '',
+      } : {}),
+      
+      // Flight 1 (replaces original single flight variables)
       flightNumber1: formData.flights[0]?.flightNumber || '',
       departureAirport1: formData.flights[0]?.departure.airport || '',
       departureAirportCode1: formData.flights[0]?.departure.airportCode || '',
       departureDate1: formData.flights[0]?.departure.date || '',
       departureTime1: formData.flights[0]?.departure.time || '',
       
-      // Connection/Final destination data
       ...(hasConnection && formData.flights.length > 1 ? {
-        // Connection airport (arrival of flight 1)
+        // Connection Airport
         connectionAirport: formData.flights[0]?.arrival.airport || '',
         connectionAirportCode: formData.flights[0]?.arrival.airportCode || '',
         connectionDate1: formData.flights[0]?.arrival.date || '',
         connectionTime1: formData.flights[0]?.arrival.time || '',
-        
-        // Flight 2 departure from connection
         connectionDate2: formData.flights[1]?.departure.date || '',
         connectionTime2: formData.flights[1]?.departure.time || '',
         
-        // Flight 2 data
-        airline2: formData.flights[1]?.airline || '',
+        // Flight 2
         flightNumber2: formData.flights[1]?.flightNumber || '',
         arrivalAirport2: formData.flights[1]?.arrival.airport || '',
         arrivalAirportCode2: formData.flights[1]?.arrival.airportCode || '',
         arrivalDate2: formData.flights[1]?.arrival.date || '',
         arrivalTime2: formData.flights[1]?.arrival.time || '',
       } : {
-        // Direct flight - final destination is flight 1 arrival
+        // Direct flight - final destination is flight 1 arrival (no connection variables)
         arrivalAirport2: formData.flights[0]?.arrival.airport || '',
         arrivalAirportCode2: formData.flights[0]?.arrival.airportCode || '',
         arrivalDate2: formData.flights[0]?.arrival.date || '',
