@@ -71,11 +71,13 @@ const BookingConfirmationTool: React.FC = () => {
       const contentType = response.headers.get('content-type') || '';
       console.log('Type de contenu de la réponse:', contentType);
 
-      if (contentType.includes('application/pdf')) {
+      // Traiter d'abord comme PDF binaire
+      if (contentType.includes('application/pdf') || contentType.includes('application/octet-stream')) {
         // Réponse PDF directe
         console.log('Réception d\'un PDF direct');
         const blob = await response.blob();
         console.log('Taille du blob PDF:', blob.size, 'bytes');
+        console.log('Type du blob:', blob.type);
         
         if (blob.size > 0) {
           const objectUrl = URL.createObjectURL(blob);
@@ -89,51 +91,128 @@ const BookingConfirmationTool: React.FC = () => {
         }
       } else if (contentType.includes('application/json')) {
         // Réponse JSON
-        const result = await response.json();
+        const responseText = await response.text();
+        console.log('Réponse JSON brute:', responseText);
+        
+        let result;
+        try {
+          result = JSON.parse(responseText);
+        } catch (parseError) {
+          console.error('Erreur de parsing JSON:', parseError);
+          throw new Error('Réponse JSON invalide du webhook');
+        }
+        
         console.log('Résultat JSON du webhook:', result);
         
         if (result.pdfUrl) {
           console.log('URL PDF reçue:', result.pdfUrl);
-          setPdfUrl(result.pdfUrl);
-          setCurrentData(data);
-          setShowForm(false);
-          setSuccess('Document PDF généré avec succès');
+          
+          // Vérifier si l'URL est accessible
+          try {
+            const pdfResponse = await fetch(result.pdfUrl);
+            if (pdfResponse.ok) {
+              const pdfBlob = await pdfResponse.blob();
+              const objectUrl = URL.createObjectURL(pdfBlob);
+              setPdfBlob(pdfBlob);
+              setPdfUrl(objectUrl);
+              setCurrentData(data);
+              setShowForm(false);
+              setSuccess('Document PDF généré avec succès');
+            } else {
+              throw new Error(`PDF non accessible à l'URL: ${result.pdfUrl}`);
+            }
+          } catch (urlError) {
+            console.error('Erreur d\'accès à l\'URL PDF:', urlError);
+            // Fallback: utiliser l'URL directement
+            setPdfUrl(result.pdfUrl);
+            setCurrentData(data);
+            setShowForm(false);
+            setSuccess('Document PDF généré avec succès (URL directe)');
+          }
         } else if (result.pdfData) {
           // PDF encodé en base64
           console.log('PDF en base64 reçu');
-          const binaryString = atob(result.pdfData);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
+          try {
+            // Nettoyer les données base64 (enlever les préfixes si présents)
+            let base64Data = result.pdfData;
+            if (base64Data.startsWith('data:application/pdf;base64,')) {
+              base64Data = base64Data.substring(28);
+            }
+            
+            const binaryString = atob(base64Data);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
+            }
+            const blob = new Blob([bytes], { type: 'application/pdf' });
+            console.log('Blob PDF créé depuis base64:', blob.size, 'bytes');
+            
+            if (blob.size > 0) {
+              const objectUrl = URL.createObjectURL(blob);
+              setPdfBlob(blob);
+              setPdfUrl(objectUrl);
+              setCurrentData(data);
+              setShowForm(false);
+              setSuccess('Document PDF généré avec succès');
+            } else {
+              throw new Error('Le PDF décodé est vide');
+            }
+          } catch (base64Error) {
+            console.error('Erreur de décodage base64:', base64Error);
+            throw new Error('Erreur lors du décodage du PDF base64');
           }
-          const blob = new Blob([bytes], { type: 'application/pdf' });
-          const objectUrl = URL.createObjectURL(blob);
-          setPdfBlob(blob);
-          setPdfUrl(objectUrl);
-          setCurrentData(data);
-          setShowForm(false);
-          setSuccess('Document PDF généré avec succès');
+        } else if (result.pdf) {
+          // Autre format de PDF dans la réponse JSON
+          console.log('PDF trouvé dans result.pdf');
+          if (typeof result.pdf === 'string') {
+            // Traiter comme base64
+            try {
+              const binaryString = atob(result.pdf);
+              const bytes = new Uint8Array(binaryString.length);
+              for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+              }
+              const blob = new Blob([bytes], { type: 'application/pdf' });
+              const objectUrl = URL.createObjectURL(blob);
+              setPdfBlob(blob);
+              setPdfUrl(objectUrl);
+              setCurrentData(data);
+              setShowForm(false);
+              setSuccess('Document PDF généré avec succès');
+            } catch (pdfError) {
+              console.error('Erreur de traitement PDF:', pdfError);
+              throw new Error('Erreur lors du traitement du PDF');
+            }
+          }
         } else if (result.success !== false) {
           // Succès mais pas de PDF
+          console.warn('Succès mais aucun PDF trouvé dans la réponse:', result);
           setCurrentData(data);
           setShowForm(false);
-          setSuccess(result.message || 'Document traité avec succès, mais aucun PDF reçu');
+          setError(result.message || 'Document traité avec succès, mais aucun PDF reçu. Vérifiez la configuration du webhook n8n.');
         } else {
           throw new Error(result.message || 'Erreur lors de la génération du PDF');
         }
       } else {
-        // Autre type de contenu - essayer de traiter comme PDF
-        console.log('Type de contenu inconnu, tentative de traitement comme PDF');
+        // Type de contenu inconnu - essayer de traiter comme PDF binaire
+        console.log('Type de contenu inconnu:', contentType, '- tentative de traitement comme PDF');
         const blob = await response.blob();
+        console.log('Blob créé:', blob.size, 'bytes, type:', blob.type);
+        
         if (blob.size > 0) {
-          const objectUrl = URL.createObjectURL(blob);
-          setPdfBlob(blob);
+          // Forcer le type MIME à PDF
+          const pdfBlob = new Blob([blob], { type: 'application/pdf' });
+          const objectUrl = URL.createObjectURL(pdfBlob);
+          setPdfBlob(pdfBlob);
           setPdfUrl(objectUrl);
           setCurrentData(data);
           setShowForm(false);
-          setSuccess('Document généré avec succès');
+          setSuccess('Document généré avec succès (type de contenu détecté automatiquement)');
         } else {
-          throw new Error('Réponse vide du webhook');
+          // Essayer de lire comme texte pour debug
+          const responseText = await response.text();
+          console.log('Réponse texte:', responseText.substring(0, 200));
+          throw new Error(`Réponse vide du webhook. Type: ${contentType}, Contenu: ${responseText.substring(0, 100)}`);
         }
       }
 
@@ -360,7 +439,7 @@ const BookingConfirmationTool: React.FC = () => {
           )}
 
           {/* Debug Info (en développement) */}
-          {process.env.NODE_ENV === 'development' && (
+          {(process.env.NODE_ENV === 'development' || true) && (
             <div className="mt-6 max-w-6xl mx-auto">
               <details className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
                 <summary className="cursor-pointer font-medium text-gray-900 dark:text-white mb-2">
@@ -369,8 +448,11 @@ const BookingConfirmationTool: React.FC = () => {
                 <div className="text-sm text-gray-600 dark:text-gray-400 space-y-2">
                   <p><strong>PDF URL:</strong> {pdfUrl || 'Aucune'}</p>
                   <p><strong>PDF Blob:</strong> {pdfBlob ? `${pdfBlob.size} bytes` : 'Aucun'}</p>
+                  <p><strong>PDF Blob Type:</strong> {pdfBlob?.type || 'N/A'}</p>
                   <p><strong>Données actuelles:</strong> {currentData ? 'Présentes' : 'Aucunes'}</p>
                   <p><strong>État génération:</strong> {isGenerating ? 'En cours' : 'Terminé'}</p>
+                  <p><strong>Erreur:</strong> {error || 'Aucune'}</p>
+                  <p><strong>Succès:</strong> {success || 'Aucun'}</p>
                 </div>
               </details>
             </div>
