@@ -50,6 +50,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, isCollapsed,
     { id: 'cass', icon: Upload, label: 'Fichier CASS' },
     { id: 'awb-validation', icon: CheckSquare, label: 'AWB Stock' },
     { id: 'booking-confirmation', icon: FileText, label: 'Confirmation Réservation' },
+    { id: 'awbEditor', icon: X, label: 'AWB Editor' },
     { id: 'roadmap', icon: Zap, label: 'Roadmap 2025' },
     { id: 'settings', icon: Settings, label: 'Paramètres' },
   ]
@@ -143,6 +144,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, isCollapsed,
                         item.id === 'cass' && !isActive ? 'text-orange-500' :
                         item.id === 'awb-validation' && !isActive ? 'text-purple-500' :
                         item.id === 'booking-confirmation' && !isActive ? 'text-green-500' :
+                        item.id === 'awbEditor' && !isActive ? 'text-pink-500' :
                         item.id === 'roadmap' && !isActive ? 'text-purple-500' : ''
                       }`} />
                       <span className="font-medium">{item.label}</span>
@@ -243,6 +245,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, isCollapsed,
                     item.id === 'cass' && !isActive ? 'text-orange-500' :
                     item.id === 'awb-validation' && !isActive ? 'text-purple-500' :
                     item.id === 'booking-confirmation' && !isActive ? 'text-green-500' :
+                    item.id === 'awbEditor' && !isActive ? 'text-green-500' :
                     item.id === 'roadmap' && !isActive ? 'text-purple-500' : ''
                   }`} />
                   {!isCollapsed && (
