@@ -7,6 +7,9 @@ import FlightSearch from './components/FlightSearch'
 import CassFileProcessor from './components/CassFileProcessor'
 import AWBValidation from './components/AWBValidation'
 import BookingConfirmationTool from './components/BookingConfirmationTool'
+import FormField from './components/AWB-Editor/FormField'
+import PDFGenerator from './components/AWB-Editor/PDFGenerator'
+import StepIndicator from './components/AWB-Editor/StepIndicator'
 import Roadmap from './components/Roadmap'
 import Settings from './components/Settings'
 
@@ -31,6 +34,8 @@ function App() {
         return <AWBValidation />
       case 'booking-confirmation':
         return <BookingConfirmationTool />
+      case 'AWB-Editor':
+        return <FormField />
       case 'roadmap':
         return <Roadmap />
       case 'settings':
